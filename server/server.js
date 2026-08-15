@@ -5,11 +5,27 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
 const {
-  findUserByUsername, updateUserPassword,
+  findUserByUsername, createUser, updateUserPassword,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   addAuditLog, getAuditLog
 } = require('./db');
+
+// Server birinchi marta ishga tushganda standart adminni avtomatik yaratish
+function ensureDefaultAdmin() {
+  const defaultUser = 'maksim.gorkiy';
+  const defaultPass = '1sonmaktab';
+  if (!findUserByUsername(defaultUser)) {
+    const hash = bcrypt.hashSync(defaultPass, 12);
+    try {
+      createUser(defaultUser, hash, 'admin');
+      console.log(`✅ Standart admin avtomatik yaratildi: ${defaultUser}`);
+    } catch (e) {
+      // allqachon mavjud bo'lsa e'tibor berilmaydi
+    }
+  }
+}
+ensureDefaultAdmin();
 
 const app = express();
 app.set('trust proxy', 1); // Render/Railway kabi reverse-proxy ortida to'g'ri IP/HTTPS aniqlash uchun
