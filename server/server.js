@@ -8,6 +8,7 @@ const {
   findUserByUsername, createUser, updateUserPassword,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
+  getHolidays, addHoliday, removeHoliday,
   addAuditLog, getAuditLog
 } = require('./db');
 
@@ -161,6 +162,30 @@ app.post('/api/admin/schedule/day', requireLogin, (req, res) => {
   if (day === undefined || day < 1 || day > 6) return res.status(400).json({ error: 'Kun noto\'g\'ri' });
   setDaySchedule(day, items || []);
   addAuditLog(req.session.username, 'update_day_schedule', `kun=${day}`);
+  res.json({ ok: true });
+});
+
+// ---------- BAYRAMLAR VA TA'TILLAR ----------
+app.get('/api/admin/holidays', requireLogin, (req, res) => {
+  res.json(getHolidays());
+});
+
+app.post('/api/admin/holidays', requireLogin, (req, res) => {
+  const { date, name } = req.body || {};
+  if (!date) return res.status(400).json({ error: 'Sana kiritilishi shart (YYYY-MM-DD)' });
+  try {
+    const item = addHoliday(date, name);
+    addAuditLog(req.session.username, 'add_holiday', `${date}: ${name || 'Bayram'}`);
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(400).json({ error: 'Sana formati noto\'g\'ri' });
+  }
+});
+
+app.delete('/api/admin/holidays/:id', requireLogin, (req, res) => {
+  const ok = removeHoliday(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Topilmadi' });
+  addAuditLog(req.session.username, 'remove_holiday', `ID: ${req.params.id}`);
   res.json({ ok: true });
 });
 

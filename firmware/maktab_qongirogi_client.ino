@@ -27,6 +27,7 @@
 #include <RtcDS1302.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <time.h>
 #include <vector>
 
 // ==================== SIZ TO'LDIRISHINGIZ KERAK ====================
@@ -41,6 +42,13 @@ const bool  USE_HTTPS     = true;
 // Admin panelning "Qurilma" bo'limidan olingan API kalit
 const char* DEVICE_API_KEY = "BU_YERGA_SERVERDAGI_APIKEYNI_QOYING";
 // ======================================================================
+
+// NTP Vaqt Sinxronizatsiyasi sozlamalari (Toshkent vaqti: UTC+5)
+const char* NTP_SERVER_1     = "pool.ntp.org";
+const char* NTP_SERVER_2     = "time.google.com";
+const long  GMT_OFFSET_SEC   = 5 * 3600; // O'zbekiston / Toshkent (UTC+5)
+const int   DAYLIGHT_OFFSET_SEC = 0;     // Yozgi vaqt yo'q
+const unsigned long NTP_SYNC_INTERVAL_MS = 12UL * 60UL * 60UL * 1000UL; // Har 12 soatda bir marta DS1302 ni to'g'rilash
 
 #define RELAY_PIN 26
 #define RELAY_ACTIVE_HIGH true
@@ -64,6 +72,7 @@ struct BellTime {
 };
 
 std::vector<BellTime> daySchedule[7]; // 0-Yakshanba, 1-Dushanba ... 6-Shanba
+std::vector<String> holidayDates;     // Bayram va ta'tillar sanalari (YYYY-MM-DD)
 
 bool bellMuted = false;
 
@@ -110,6 +119,14 @@ void saveToFlash() {
     prefs.putString(("day"+String(i)).c_str(), scheduleToJson(daySchedule[i]));
   }
   prefs.putBool("muted", bellMuted);
+
+  // Bayramlar ro'yxatini saqlash
+  DynamicJsonDocument hdoc(2048);
+  JsonArray harr = hdoc.to<JsonArray>();
+  for (const auto &h : holidayDates) harr.add(h);
+  String hout; serializeJson(hdoc, hout);
+  prefs.putString("holidays", hout);
+
   prefs.end();
 }
 
@@ -119,6 +136,17 @@ void loadFromFlash() {
     daySchedule[i] = jsonToSchedule(prefs.getString(("day"+String(i)).c_str(), "[]"));
   }
   bellMuted = prefs.getBool("muted", false);
+
+  // Bayramlar ro'yxatini yuklash
+  holidayDates.clear();
+  String hjson = prefs.getString("holidays", "[]");
+  DynamicJsonDocument hdoc(2048);
+  if (!deserializeJson(hdoc, hjson)) {
+    for (JsonVariant v : hdoc.as<JsonArray>()) {
+      holidayDates.push_back(v.as<String>());
+    }
+  }
+
   prefs.end();
 }
 
@@ -183,12 +211,20 @@ bool fetchScheduleFromServer() {
     daySchedule[i] = items;
   }
 
+  // Bayramlar ro'yxatini qabul qilish
+  if (!doc["holidays"].isNull()) {
+    holidayDates.clear();
+    for (JsonVariant v : doc["holidays"].as<JsonArray>()) {
+      holidayDates.push_back(v.as<String>());
+    }
+  }
+
   if (!doc["muted"].isNull()) {
     bellMuted = doc["muted"].as<bool>();
   }
 
   saveToFlash();
-  Serial.println("Jadval serverdan muvaffaqiyatli yangilandi.");
+  Serial.println("Jadval va bayramlar serverdan muvaffaqiyatli yangilandi.");
   return true;
 }
 
@@ -239,9 +275,28 @@ void handleRelayTimer() {
   pulsesLeft = 0;
 }
 
+bool isTodayHoliday(const RtcDateTime &now) {
+  char todayBuf[16];
+  snprintf(todayBuf, sizeof(todayBuf), "%04d-%02d-%02d", now.Year(), now.Month(), now.Day());
+  String todayStr = String(todayBuf);
+  for (const auto &h : holidayDates) {
+    if (h == todayStr) return true;
+  }
+  return false;
+}
+
 void checkSchedule() {
   RtcDateTime now = rtc.GetDateTime();
   if (now.Minute() == lastTriggeredMinute) return;
+
+  // Bugun bayram yoki ta'til ekanligini tekshirish
+  if (isTodayHoliday(now)) {
+    if (lastTriggeredMinute == -1) {
+      Serial.println("Bugun bayram/ta'til kuni deb belgilangan — qo'ng'iroq chalinmaydi.");
+    }
+    lastTriggeredMinute = now.Minute();
+    return;
+  }
 
   int dow = now.DayOfWeek(); // 0=Yakshanba, 1=Dushanba ... 6=Shanba
   std::vector<BellTime>& active = daySchedule[dow];
@@ -259,6 +314,44 @@ void checkSchedule() {
   lastTriggeredMinute = now.Minute();
 }
 
+unsigned long lastNtpSyncAt = 0;
+
+// ---------------- NTP VAQT SINXRONIZATSIYASI ----------------
+bool syncTimeWithNTP() {
+  if (WiFi.status() != WL_CONNECTED) return false;
+
+  Serial.println("NTP serverdan Toshkent aniq vaqti so'ralmoqda...");
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER_1, NTP_SERVER_2);
+
+  struct tm timeinfo;
+  int attempts = 0;
+  while (!getLocalTime(&timeinfo) && attempts < 10) {
+    delay(400);
+    attempts++;
+  }
+
+  if (attempts >= 10) {
+    Serial.println("⚠️ NTP serverdan vaqtni olib bo'lmadi.");
+    return false;
+  }
+
+  RtcDateTime ntpTime(
+    timeinfo.tm_year + 1900,
+    timeinfo.tm_mon + 1,
+    timeinfo.tm_mday,
+    timeinfo.tm_hour,
+    timeinfo.tm_min,
+    timeinfo.tm_sec
+  );
+
+  rtc.SetDateTime(ntpTime);
+  lastNtpSyncAt = millis();
+  Serial.printf("✅ DS1302 soati NTP orqali to'g'rilandi: %04d-%02d-%02d %02d:%02d:%02d (UTC+5)\n",
+    ntpTime.Year(), ntpTime.Month(), ntpTime.Day(),
+    ntpTime.Hour(), ntpTime.Minute(), ntpTime.Second());
+  return true;
+}
+
 // ---------------- WIFI ----------------
 
 void connectWiFi() {
@@ -274,6 +367,7 @@ void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("Ulandi. IP: ");
     Serial.println(WiFi.localIP());
+    syncTimeWithNTP();
   } else {
     Serial.println("WiFi-ga ulanib bo'lmadi, keyinroq qayta urinib ko'riladi.");
   }
@@ -291,7 +385,7 @@ void setup() {
   if (!rtc.IsDateTimeValid()) {
     // Batareya birinchi marta ulanganda yoki tamom bo'lib qolganda vaqt yo'qoladi —
     // shunday holatda kompyuter/kompilyatsiya vaqtiga qayta o'rnatiladi.
-    Serial.println("DS1302 vaqti noto'g'ri/yo'qolgan, kompilyatsiya vaqtiga o'rnatilmoqda...");
+    Serial.println("DS1302 vaqti noto'g'ri/yo'qolgan, dastlabki vaqtga o'rnatilmoqda...");
     rtc.SetDateTime(compiled);
   }
   if (rtc.GetIsWriteProtected()) {
@@ -319,9 +413,15 @@ void loop() {
     }
   }
 
+  // Har 2 daqiqada serverdan jadvalni tekshirish
   if (millis() - lastFetchAt > SCHEDULE_FETCH_INTERVAL_MS) {
     lastFetchAt = millis();
     fetchScheduleFromServer();
+  }
+
+  // Har 12 soatda bir marta DS1302 vaqtini NTP orqali to'g'rilab turish
+  if (WiFi.status() == WL_CONNECTED && (millis() - lastNtpSyncAt > NTP_SYNC_INTERVAL_MS)) {
+    syncTimeWithNTP();
   }
 
   if (bellMuted && relayIsOn) {

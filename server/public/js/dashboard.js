@@ -72,17 +72,19 @@ document.querySelectorAll('.sidebar nav a').forEach(a => {
     document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
     a.classList.add('active');
     const tab = a.dataset.tab;
-    ['schedule', 'device', 'account', 'log'].forEach(t => {
+    ['schedule', 'holidays', 'device', 'account', 'log'].forEach(t => {
       const el = document.getElementById('tab-' + t);
       if (el) el.style.display = (t === tab) ? '' : 'none';
     });
     const titleMap = {
       schedule: 'Qo\'ng\'iroq jadvali',
+      holidays: 'Bayramlar va ta\'tillar',
       device: 'Qurilma sozlamalari',
       account: 'Hisobim',
       log: 'Amallar tarixi'
     };
     document.getElementById('pageTitle').textContent = titleMap[tab] || '';
+    if (tab === 'holidays') loadHolidays();
     if (tab === 'device') loadDevice();
     if (tab === 'log') loadLog();
   });
@@ -442,3 +444,84 @@ function loadLog() {
     </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">Tarix bo\'sh</td></tr>';
   });
 }
+
+// ============================================================
+// HOLIDAYS
+// ============================================================
+function loadHolidays() {
+  fetch('/api/admin/holidays').then(r => r.json()).then(items => {
+    const tbody = document.getElementById('holidaysList');
+    const empty = document.getElementById('holidaysEmpty');
+    if (!tbody) return;
+    if (!items || items.length === 0) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    tbody.innerHTML = items.map(h => `<tr>
+      <td class="mono" style="font-weight:600;">${h.date}</td>
+      <td>${h.name || '—'}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-ghost btn-sm" onclick="deleteHoliday(${h.id})" style="color:var(--danger, #DC2626); padding:4px 8px;">
+          O'chirish
+        </button>
+      </td>
+    </tr>`).join('');
+  }).catch(() => toast('Bayramlarni yuklashda xato', 'error'));
+}
+
+window.deleteHoliday = function(id) {
+  if (!confirm('Ushbu bayram sanasini o\'chirmoqchimisiz?')) return;
+  fetch('/api/admin/holidays/' + id, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        toast('O\'chirildi ✓');
+        loadHolidays();
+      } else {
+        toast(d.error || 'Xato', 'error');
+      }
+    });
+};
+
+const addHolidayBtn = document.getElementById('addHolidayBtn');
+if (addHolidayBtn) {
+  addHolidayBtn.onclick = () => {
+    const date = (document.getElementById('holidayDateInput') || {}).value;
+    const name = (document.getElementById('holidayNameInput') || {}).value.trim();
+    if (!date) { toast('Sanani tanlang', 'error'); return; }
+    fetch('/api/admin/holidays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, name })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
+      toast('Bayram sanasi saqlandi ✓');
+      document.getElementById('holidayDateInput').value = '';
+      document.getElementById('holidayNameInput').value = '';
+      loadHolidays();
+    });
+  };
+}
+
+// O'zbekiston rasmiy bayramlarini tez qo'shish tugmalari
+document.querySelectorAll('#quickHolidays button').forEach(btn => {
+  btn.onclick = () => {
+    const currentYear = new Date().getFullYear();
+    const mmdd = btn.dataset.date;
+    const name = btn.dataset.name;
+    const fullDate = `${currentYear}-${mmdd}`;
+    fetch('/api/admin/holidays', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: fullDate, name })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
+      toast(`${name} (${fullDate}) qo'shildi ✓`);
+      loadHolidays();
+    });
+  };
+});

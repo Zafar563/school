@@ -14,8 +14,9 @@ function defaultData() {
     users: [],               // {id, username, password_hash, role, created_at}
     settings: {},             // {device_api_key: "...", device_last_seen: "...", device_last_ip: "..."}
     scheduleDay: { "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
+    holidays: [],            // [{id: 1, date: "2026-03-21", name: "Navro'z bayrami"}]
     auditLog: [],             // {username, action, detail, created_at}
-    nextId: { user: 1, dayItem: 1, log: 1 }
+    nextId: { user: 1, dayItem: 1, log: 1, holiday: 1 }
   };
 }
 
@@ -32,6 +33,8 @@ function load() {
       data.settings.device_api_key = crypto.randomBytes(24).toString('hex');
       persist();
     }
+    if (!data.holidays) data.holidays = [];
+    if (!data.nextId.holiday) data.nextId.holiday = 1;
   }
 }
 
@@ -91,7 +94,48 @@ function getFullSchedule() {
       items: data.scheduleDay[String(d)] || []
     };
   }
-  return { days };
+  return {
+    days,
+    holidays: (data.holidays || []).map(h => h.date) // ESP32 uchun faqat sanalar ro'yxati
+  };
+}
+
+// ---------------- HOLIDAYS ----------------
+function getHolidays() {
+  return (data.holidays || []).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function addHoliday(date, name) {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('INVALID_DATE');
+  // Agar shu sanada allaqachon mavjud bo'lsa yangilaymiz
+  const existing = (data.holidays || []).find(h => h.date === date);
+  if (existing) {
+    existing.name = (name || '').trim();
+    persist();
+    return existing;
+  }
+  const item = {
+    id: data.nextId.holiday++,
+    date,
+    name: (name || '').trim(),
+    created_at: new Date().toISOString()
+  };
+  if (!data.holidays) data.holidays = [];
+  data.holidays.push(item);
+  persist();
+  return item;
+}
+
+function removeHoliday(id) {
+  const numId = parseInt(id, 10);
+  if (!data.holidays) return false;
+  const beforeLen = data.holidays.length;
+  data.holidays = data.holidays.filter(h => h.id !== numId);
+  if (data.holidays.length !== beforeLen) {
+    persist();
+    return true;
+  }
+  return false;
 }
 
 // Har bir qo'ng'iroq vaqti endi o'zining chalish uslubiga ega bo'ladi
@@ -136,5 +180,6 @@ module.exports = {
   findUserByUsername, findUserById, createUser, updateUserPassword, updateUserRole,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
+  getHolidays, addHoliday, removeHoliday,
   addAuditLog, getAuditLog
 };
