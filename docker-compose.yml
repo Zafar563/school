@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    image: ghcr.io/zafar563/school:latest
+    container_name: maktab-qongirogi
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
