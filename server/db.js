@@ -69,12 +69,23 @@ function updateUserPassword(userId, passwordHash) {
   persist();
   return true;
 }
-function updateUserRole(userId, role) {
-  const user = findUserById(userId);
-  if (!user) return false;
-  user.role = role;
-  persist();
-  return true;
+function getAllUsers() {
+  return data.users.map(u => ({
+    id: u.id,
+    username: u.username,
+    role: u.role || 'user',
+    created_at: u.created_at
+  }));
+}
+function deleteUser(userId) {
+  const numId = parseInt(userId, 10);
+  const beforeLen = data.users.length;
+  data.users = data.users.filter(u => u.id !== numId);
+  if (data.users.length !== beforeLen) {
+    persist();
+    return true;
+  }
+  return false;
 }
 
 // ---------------- SETTINGS ----------------
@@ -176,10 +187,25 @@ function getAuditLog(limit = 100) {
   return data.auditLog.slice(0, limit);
 }
 
+function setPendingCommand(cmd) {
+  data.settings.pending_command = cmd;
+  persist();
+}
+
+function popPendingCommand() {
+  if (!data.settings.pending_command) return null;
+  const cmd = data.settings.pending_command;
+  delete data.settings.pending_command;
+  persist();
+  return cmd;
+}
+
 module.exports = {
-  findUserByUsername, findUserById, createUser, updateUserPassword, updateUserRole,
+  findUserByUsername, findUserById, createUser, updateUserPassword,
+  getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
+  setPendingCommand, popPendingCommand,
   addAuditLog, getAuditLog
 };

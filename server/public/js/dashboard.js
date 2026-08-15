@@ -49,8 +49,8 @@ if (saveSchoolNameBtn) {
 fetch('/api/me').then(r => r.json()).then(d => {
   if (!d.loggedIn) { window.location.href = '/login.html'; return; }
   document.getElementById('userLabel').textContent = d.username;
-  currentRole = d.role || 'admin';
-  document.getElementById('userRoleLabel').textContent = isAdmin() ? 'Administrator' : 'Mas\'ul';
+  currentRole = d.role || 'user';
+  document.getElementById('userRoleLabel').textContent = isAdmin() ? 'Administrator' : 'Foydalanuvchi';
   if (!isAdmin()) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
   } else {
@@ -72,7 +72,7 @@ document.querySelectorAll('.sidebar nav a').forEach(a => {
     document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
     a.classList.add('active');
     const tab = a.dataset.tab;
-    ['schedule', 'holidays', 'device', 'account', 'log'].forEach(t => {
+    ['schedule', 'holidays', 'device', 'account', 'users', 'log'].forEach(t => {
       const el = document.getElementById('tab-' + t);
       if (el) el.style.display = (t === tab) ? '' : 'none';
     });
@@ -81,11 +81,14 @@ document.querySelectorAll('.sidebar nav a').forEach(a => {
       holidays: 'Bayramlar va ta\'tillar',
       device: 'Qurilma sozlamalari',
       account: 'Hisobim',
+      users: 'Foydalanuvchilar',
       log: 'Amallar tarixi'
     };
     document.getElementById('pageTitle').textContent = titleMap[tab] || '';
     if (tab === 'holidays') loadHolidays();
     if (tab === 'device') loadDevice();
+    if (tab === 'account') loadTelegramConfig();
+    if (tab === 'users') loadUsers();
     if (tab === 'log') loadLog();
   });
 });
@@ -251,6 +254,80 @@ document.getElementById('addRowBtn').onclick = () => addRow('day');
 document.getElementById('saveDayBtn').onclick = saveDay;
 
 // ============================================================
+// PRESET TEMPLATES
+// ============================================================
+const PRESET_TEMPLATES = {
+  shift1: [
+    { hour: 8, minute: 0, duration_sec: 5, label: '1-dars kirish', ring_pattern: 'continuous' },
+    { hour: 8, minute: 45, duration_sec: 5, label: '1-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 8, minute: 50, duration_sec: 5, label: '2-dars kirish', ring_pattern: 'continuous' },
+    { hour: 9, minute: 35, duration_sec: 5, label: '2-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 9, minute: 45, duration_sec: 5, label: '3-dars kirish (Katta tanaffus)', ring_pattern: 'continuous' },
+    { hour: 10, minute: 30, duration_sec: 5, label: '3-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 10, minute: 35, duration_sec: 5, label: '4-dars kirish', ring_pattern: 'continuous' },
+    { hour: 11, minute: 20, duration_sec: 5, label: '4-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 11, minute: 25, duration_sec: 5, label: '5-dars kirish', ring_pattern: 'continuous' },
+    { hour: 12, minute: 10, duration_sec: 5, label: '5-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 12, minute: 15, duration_sec: 5, label: '6-dars kirish', ring_pattern: 'continuous' },
+    { hour: 13, minute: 0, duration_sec: 5, label: '6-dars chiqish (1-smena tugashi)', ring_pattern: 'continuous' }
+  ],
+  shift2: [
+    { hour: 13, minute: 30, duration_sec: 5, label: '1-dars kirish', ring_pattern: 'continuous' },
+    { hour: 14, minute: 15, duration_sec: 5, label: '1-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 14, minute: 20, duration_sec: 5, label: '2-dars kirish', ring_pattern: 'continuous' },
+    { hour: 15, minute: 5, duration_sec: 5, label: '2-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 15, minute: 15, duration_sec: 5, label: '3-dars kirish', ring_pattern: 'continuous' },
+    { hour: 16, minute: 0, duration_sec: 5, label: '3-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 16, minute: 5, duration_sec: 5, label: '4-dars kirish', ring_pattern: 'continuous' },
+    { hour: 16, minute: 50, duration_sec: 5, label: '4-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 16, minute: 55, duration_sec: 5, label: '5-dars kirish', ring_pattern: 'continuous' },
+    { hour: 17, minute: 40, duration_sec: 5, label: '5-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 17, minute: 45, duration_sec: 5, label: '6-dars kirish', ring_pattern: 'continuous' },
+    { hour: 18, minute: 30, duration_sec: 5, label: '6-dars chiqish (2-smena tugashi)', ring_pattern: 'continuous' }
+  ],
+  shortDay: [
+    { hour: 8, minute: 0, duration_sec: 5, label: '1-dars kirish (35 min)', ring_pattern: 'continuous' },
+    { hour: 8, minute: 35, duration_sec: 5, label: '1-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 8, minute: 40, duration_sec: 5, label: '2-dars kirish', ring_pattern: 'continuous' },
+    { hour: 9, minute: 15, duration_sec: 5, label: '2-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 9, minute: 20, duration_sec: 5, label: '3-dars kirish', ring_pattern: 'continuous' },
+    { hour: 9, minute: 55, duration_sec: 5, label: '3-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 10, minute: 0, duration_sec: 5, label: '4-dars kirish', ring_pattern: 'continuous' },
+    { hour: 10, minute: 35, duration_sec: 5, label: '4-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 10, minute: 40, duration_sec: 5, label: '5-dars kirish', ring_pattern: 'continuous' },
+    { hour: 11, minute: 15, duration_sec: 5, label: '5-dars chiqish', ring_pattern: 'continuous' },
+    { hour: 11, minute: 20, duration_sec: 5, label: '6-dars kirish', ring_pattern: 'continuous' },
+    { hour: 11, minute: 55, duration_sec: 5, label: '6-dars chiqish', ring_pattern: 'continuous' }
+  ]
+};
+
+function applyPreset(tplKey) {
+  if (!PRESET_TEMPLATES[tplKey]) return;
+  if (!confirm(`Hozirgi ${DAY_NAMES[currentDay]} jadvaliga ushbu shablonni yuklamoqchimisiz?`)) return;
+  const items = JSON.parse(JSON.stringify(PRESET_TEMPLATES[tplKey]));
+  renderList('day', items);
+  toast('Shablon yuklandi. "Saqlash" tugmasini bosing ✓');
+}
+
+const tpl1Btn = document.getElementById('tpl1SmenaBtn');
+if (tpl1Btn) tpl1Btn.onclick = () => applyPreset('shift1');
+
+const tpl2Btn = document.getElementById('tpl2SmenaBtn');
+if (tpl2Btn) tpl2Btn.onclick = () => applyPreset('shift2');
+
+const tplShortBtn = document.getElementById('tplShortDayBtn');
+if (tplShortBtn) tplShortBtn.onclick = () => applyPreset('shortDay');
+
+const tplClearBtn = document.getElementById('tplClearDayBtn');
+if (tplClearBtn) {
+  tplClearBtn.onclick = () => {
+    if (!confirm(`${DAY_NAMES[currentDay]} jadvalidagi barcha vaqtlarni tozalashni tasdiqlaysizmi?`)) return;
+    renderList('day', []);
+    toast('Jadval tozalandi. "Saqlash" tugmasini bosing ✓');
+  };
+}
+
+// ============================================================
 // MUTE
 // ============================================================
 let isMuted = false;
@@ -403,8 +480,35 @@ if (regenBtn) {
 }
 
 // ============================================================
-// ACCOUNT
+// ACCOUNT & TELEGRAM
 // ============================================================
+function loadTelegramConfig() {
+  if (!isAdmin()) return;
+  fetch('/api/admin/telegram').then(r => r.json()).then(d => {
+    const tInput = document.getElementById('tgTokenInput');
+    const cInput = document.getElementById('tgChatIdInput');
+    if (tInput) tInput.value = d.token || '';
+    if (cInput) cInput.value = d.adminChatId || '';
+  }).catch(() => {});
+}
+
+const saveTelegramBtn = document.getElementById('saveTelegramBtn');
+if (saveTelegramBtn) {
+  saveTelegramBtn.onclick = () => {
+    const token = (document.getElementById('tgTokenInput') || {}).value.trim();
+    const adminChatId = (document.getElementById('tgChatIdInput') || {}).value.trim();
+    fetch('/api/admin/telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, adminChatId })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
+      toast('Telegram sozlamalari saqlandi va bot ishga tushdi ✓');
+    }).catch(() => toast('Server bilan aloqada xato', 'error'));
+  };
+}
+
 document.getElementById('changePassBtn').onclick = () => {
   const cur = (document.getElementById('curPass') || {}).value;
   const nw = (document.getElementById('newPass') || {}).value;
@@ -415,7 +519,7 @@ document.getElementById('changePassBtn').onclick = () => {
     body: JSON.stringify({ currentPassword: cur, newPassword: nw })
   }).then(async r => {
     const d = await r.json();
-    if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+    if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
     toast('Parol yangilandi ✓');
     document.getElementById('curPass').value = '';
     document.getElementById('newPass').value = '';
@@ -525,3 +629,145 @@ document.querySelectorAll('#quickHolidays button').forEach(btn => {
     });
   };
 });
+
+// ============================================================
+// MANUAL & EMERGENCY BELL TRIGGER
+// ============================================================
+function triggerManualBell(opts) {
+  fetch('/api/admin/trigger-bell', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts)
+  }).then(async r => {
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
+    toast(d.message || 'Buyruq yuborildi ✓');
+  }).catch(() => toast('Server bilan aloqada xato', 'error'));
+}
+
+const ring5Btn = document.getElementById('manualRing5Btn');
+if (ring5Btn) {
+  ring5Btn.onclick = () => {
+    triggerManualBell({ action: 'ring', duration_sec: 5, ring_pattern: 'continuous' });
+  };
+}
+
+const ringPulseBtn = document.getElementById('manualRingPulseBtn');
+if (ringPulseBtn) {
+  ringPulseBtn.onclick = () => {
+    triggerManualBell({ action: 'ring', duration_sec: 3, ring_pattern: 'pulsed', pulse_count: 3, pulse_gap_sec: 1 });
+  };
+}
+
+const emergencyBtn = document.getElementById('emergencyRingBtn');
+if (emergencyBtn) {
+  emergencyBtn.onclick = () => {
+    if (!confirm('🚨 DIQQAT: Favqulodda trevoga signali 30 soniya davomida uzluksiz chalinadi! Tasdiqlaysizmi?')) return;
+    triggerManualBell({ action: 'ring', duration_sec: 30, ring_pattern: 'continuous' });
+  };
+}
+
+const stopRingBtn = document.getElementById('stopRingBtn');
+if (stopRingBtn) {
+  stopRingBtn.onclick = () => {
+    triggerManualBell({ action: 'stop' });
+  };
+}
+
+// ============================================================
+// USERS MANAGEMENT (ADMIN & USER)
+// ============================================================
+function loadUsers() {
+  if (!isAdmin()) return;
+  fetch('/api/admin/users').then(r => r.json()).then(rows => {
+    const tbody = document.getElementById('usersList');
+    if (!tbody) return;
+    tbody.innerHTML = rows.map(u => `<tr>
+      <td class="mono">${u.id}</td>
+      <td><b>${u.username}</b></td>
+      <td>
+        <span class="conn-badge" style="padding:2px 8px; font-size:11px; background:${u.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)'}; color:${u.role === 'admin' ? '#2563eb' : '#4b5563'}">
+          ${u.role === 'admin' ? '👑 Admin' : '👤 User'}
+        </span>
+      </td>
+      <td class="mono">${new Date(u.created_at).toLocaleDateString('uz-UZ')}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-ghost btn-sm" onclick="resetUserPassword(${u.id}, '${u.username}')" style="padding:4px 8px; margin-right:4px;">
+          Parol
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteUserAccount(${u.id}, '${u.username}')" style="color:var(--danger, #DC2626); padding:4px 8px;">
+          O'chirish
+        </button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
+  }).catch(() => toast('Foydalanuvchilarni yuklashda xato', 'error'));
+}
+
+window.deleteUserAccount = function(id, username) {
+  if (!confirm(`"${username}" hisobini o'chirishni tasdiqlaysizmi?`)) return;
+  fetch('/api/admin/users/' + id, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        toast('Foydalanuvchi o\'chirildi ✓');
+        loadUsers();
+      } else {
+        toast(d.error || 'Xatolik', 'error');
+      }
+    }).catch(() => toast('Server xatosi', 'error'));
+};
+
+window.resetUserPassword = function(id, username) {
+  const newPass = prompt(`"${username}" uchun yangi parolni kiriting (kamida 6 ta belgi):`);
+  if (!newPass) return;
+  if (newPass.length < 6) {
+    toast('Parol kamida 6 belgidan iborat bo\'lishi kerak', 'error');
+    return;
+  }
+  fetch(`/api/admin/users/${id}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword: newPass })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      toast(`"${username}" paroli yangilandi ✓`);
+    } else {
+      toast(d.error || 'Xatolik', 'error');
+    }
+  }).catch(() => toast('Server xatosi', 'error'));
+};
+
+const createUserBtn = document.getElementById('createUserBtn');
+if (createUserBtn) {
+  createUserBtn.onclick = () => {
+    const uInput = document.getElementById('newUsernameInput');
+    const pInput = document.getElementById('newUserPasswordInput');
+    const rInput = document.getElementById('newUserRoleSelect');
+
+    const username = (uInput || {}).value.trim();
+    const password = (pInput || {}).value.trim();
+    const role = (rInput || {}).value;
+
+    if (!username || !password) {
+      toast('Login va parolni to\'ldiring', 'error');
+      return;
+    }
+    if (password.length < 6) {
+      toast('Parol kamida 6 belgidan iborat bo\'lishi kerak', 'error');
+      return;
+    }
+
+    fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+      toast(`Yangi ${role === 'admin' ? 'Admin' : 'Foydalanuvchi'} ("${username}") yaratildi ✓`);
+      uInput.value = '';
+      pInput.value = '';
+      loadUsers();
+    }).catch(() => toast('Server bilan aloqada xato', 'error'));
+  };
+}

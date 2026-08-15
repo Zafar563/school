@@ -34,6 +34,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
         Hisob
       </a>
+      <a data-tab="users" class="admin-only">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        Foydalanuvchilar
+      </a>
       <a data-tab="log" class="admin-only">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
         Tarix
@@ -79,6 +83,13 @@
           </div>
         </div>
         <div class="tabs" id="dayTabs"></div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0 16px 0; padding:10px 14px; background:rgba(0,0,0,0.03); border:1px solid var(--border, #e4e4e7); border-radius:8px;">
+          <span style="font-size:12px; font-weight:600; color:var(--text-muted);">⚡ Shablon yuklash:</span>
+          <button class="btn btn-ghost btn-sm" id="tpl1SmenaBtn">🌅 1-Smena (8:00 - 13:00)</button>
+          <button class="btn btn-ghost btn-sm" id="tpl2SmenaBtn">🌇 2-Smena (13:30 - 18:30)</button>
+          <button class="btn btn-ghost btn-sm" id="tplShortDayBtn">⏱️ Qisqartirilgan (35 min)</button>
+          <button class="btn btn-ghost btn-sm" id="tplClearDayBtn" style="color:var(--danger, #DC2626); margin-left:auto;">🗑️ Tozalash</button>
+        </div>
         <div id="dayList"></div>
         <div class="list-empty" id="dayEmpty">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -198,6 +209,26 @@
       </div>
 
       <div class="card">
+        <h2>Masofadan qo'lda chalish & Favqulodda signal</h2>
+        <p class="hint">ESP32 qurilmasiga to'g'ridan-to'g'ri darhol chalish yoki favqulodda signal buyrug'ini yuboring.</p>
+        
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
+          <button class="btn btn-ghost" id="manualRing5Btn" style="flex:1; min-width:180px; justify-content:center;">
+            🔔 Sinov qo'ng'irog'i (5 soniya)
+          </button>
+          <button class="btn btn-ghost" id="manualRingPulseBtn" style="flex:1; min-width:180px; justify-content:center;">
+            🎶 Uzib-uzib chalish (3 marta)
+          </button>
+          <button class="btn btn-primary" id="emergencyRingBtn" style="background:#DC2626; border-color:#DC2626; flex:1; min-width:220px; justify-content:center;">
+            🚨 Favqulodda Trevoga (30s)
+          </button>
+          <button class="btn btn-ghost" id="stopRingBtn" style="color:var(--danger, #DC2626); justify-content:center;">
+            🛑 Darhol to'xtatish
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Ulanish kaliti (API Key)</h2>
         <p class="hint">Bu kalitni Arduino dasturiga kiritasiz. Hech kimga ko'rsatmang.</p>
         <div class="key-box-row">
@@ -226,6 +257,24 @@
         </div>
       </div>
 
+      <div class="card admin-only">
+        <h2>Telegram Bot sozlamalari</h2>
+        <p class="hint">Telegram orqali qo'ng'iroqni boshqarish va qurilma o'chib qolsa ogohlantirish olish uchun @BotFather'dan olingan tokenni kiriting.</p>
+        <div class="form-fields">
+          <div class="field-group">
+            <label>Bot Token</label>
+            <input type="text" id="tgTokenInput" placeholder="Masalan: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+          </div>
+          <div class="field-group">
+            <label>Admin Chat ID (ixtiyoriy, botga /start yozilsa avtomatik to'ladi)</label>
+            <input type="text" id="tgChatIdInput" placeholder="Masalan: 12345678">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="saveTelegramBtn">Botni saqlash va ishga tushirish</button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Parolni o'zgartirish</h2>
         <p class="hint">Kamida 8 belgidan iborat yangi parol kiriting.</p>
@@ -242,6 +291,42 @@
         <div class="btn-row">
           <button class="btn btn-primary" id="changePassBtn">Parolni yangilash</button>
         </div>
+      </div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div id="tab-users" style="display:none">
+      <div class="card admin-only">
+        <h2>Yangi foydalanuvchi qo'shish</h2>
+        <p class="hint">Tizimga kirishi mumkin bo'lgan Admin yoki Oddiy foydalanuvchi hisobini yarating.</p>
+        <div class="form-fields" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+          <div class="field-group" style="flex:1; min-width:160px;">
+            <label>Login</label>
+            <input type="text" id="newUsernameInput" placeholder="Masalan: navbatchi">
+          </div>
+          <div class="field-group" style="flex:1; min-width:160px;">
+            <label>Parol (min 6 ta)</label>
+            <input type="password" id="newUserPasswordInput" placeholder="Parolni kiriting">
+          </div>
+          <div class="field-group" style="flex:1; min-width:140px;">
+            <label>Rol</label>
+            <select id="newUserRoleSelect" style="width:100%; height:38px; border-radius:6px; border:1px solid var(--border); padding:0 8px; background:var(--bg-card); color:var(--text);">
+              <option value="user">Foydalanuvchi (User)</option>
+              <option value="admin">Administrator (Admin)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="createUserBtn" style="margin-bottom:2px;">
+            Qo'shish
+          </button>
+        </div>
+      </div>
+
+      <div class="card admin-only">
+        <h2>Mavjud foydalanuvchilar</h2>
+        <table class="log-table" id="usersTable">
+          <thead><tr><th>ID</th><th>Login</th><th>Rol</th><th>Yaratilgan sana</th><th style="width:140px; text-align:right;">Amal</th></tr></thead>
+          <tbody id="usersList"></tbody>
+        </table>
       </div>
     </div>
 

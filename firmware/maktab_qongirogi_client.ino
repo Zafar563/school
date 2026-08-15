@@ -225,6 +225,23 @@ bool fetchScheduleFromServer() {
 
   saveToFlash();
   Serial.println("Jadval va bayramlar serverdan muvaffaqiyatli yangilandi.");
+
+  // Tezkor buyruqlarni (manual ring / emergency alarm / stop) ijro etish
+  if (!doc["command"].isNull()) {
+    JsonObject cmd = doc["command"].as<JsonObject>();
+    String act = cmd["action"].as<String>();
+    if (act == "ring") {
+      BellTime customRing = parseBellTime(cmd);
+      Serial.printf("⚡ Masofaviy buyruq: %d soniya qo'ng'iroq chalish!\n", customRing.durationSec);
+      ringBell(customRing);
+    } else if (act == "stop") {
+      Serial.println("🛑 Masofaviy buyruq: Qo'ng'iroqni darhol to'xtatish!");
+      relayPinOff();
+      relayIsOn = false;
+      pulsesLeft = 0;
+    }
+  }
+
   return true;
 }
 

@@ -5,12 +5,15 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
 const {
-  findUserByUsername, createUser, updateUserPassword,
+  findUserByUsername, findUserById, createUser, updateUserPassword,
+  getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
+  setPendingCommand, popPendingCommand,
   addAuditLog, getAuditLog
 } = require('./db');
+const { initTelegramBot } = require('./telegram');
 
 // Server birinchi marta ishga tushganda standart adminni avtomatik yaratish
 function ensureDefaultAdmin() {
@@ -224,6 +227,103 @@ app.post('/api/admin/mute', requireLogin, (req, res) => {
   res.json({ ok: true, muted });
 });
 
+// Favqulodda yoki Sinov tariqasida qo'lda darhol chalish
+app.post('/api/admin/trigger-bell', requireLogin, (req, res) => {
+  const { action, duration_sec, ring_pattern, pulse_count, pulse_gap_sec } = req.body || {};
+  if (action === 'stop') {
+    setPendingCommand({ action: 'stop' });
+    addAuditLog(req.session.username, 'manual_stop', 'Qo\'ng\'iroq qo\'lda to\'xtatildi');
+    return res.json({ ok: true, message: 'To\'xtatish buyrug\'i yuborildi' });
+  }
+
+  const duration = Math.min(60, Math.max(1, parseInt(duration_sec, 10) || 5));
+  const pattern = ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
+  const command = {
+    action: 'ring',
+    duration_sec: duration,
+    ring_pattern: pattern,
+    pulse_count: Math.min(10, Math.max(2, parseInt(pulse_count, 10) || 3)),
+    pulse_gap_sec: Math.min(10, Math.max(1, parseInt(pulse_gap_sec, 10) || 1)),
+    created_at: Date.now()
+  };
+
+  setPendingCommand(command);
+  addAuditLog(req.session.username, 'manual_ring', `${pattern === 'pulsed' ? 'Uzib-uzib' : 'Uzluksiz'} ${duration}s`);
+  res.json({ ok: true, message: 'Qo\'ng\'iroq buyrug\'i navbatga qo\'yildi' });
+});
+
+// Telegram Bot sozlamalari
+app.get('/api/admin/telegram', requireAdmin, (req, res) => {
+  res.json({
+    token: getSetting('telegram_bot_token') || '',
+    adminChatId: getSetting('telegram_admin_chat_id') || ''
+  });
+});
+
+app.post('/api/admin/telegram', requireAdmin, (req, res) => {
+  const { token, adminChatId } = req.body || {};
+  setSetting('telegram_bot_token', (token || '').trim());
+  if (adminChatId) setSetting('telegram_admin_chat_id', (adminChatId || '').trim());
+  addAuditLog(req.session.username, 'update_telegram_config', 'Telegram bot sozlamalari yangilandi');
+  initTelegramBot();
+  res.json({ ok: true });
+});
+
+// ---------- FOYDALANUVCHILARNI BOSHQARISH (ADMIN & USER) ----------
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json(getAllUsers());
+});
+
+app.post('/api/admin/users', requireAdmin, (req, res) => {
+  const { username, password, role } = req.body || {};
+  const cleanUser = (username || '').trim();
+  const cleanPass = (password || '').trim();
+  const cleanRole = (role === 'admin') ? 'admin' : 'user';
+
+  if (!cleanUser || !cleanPass) {
+    return res.status(400).json({ error: 'Login va parol kiritilishi shart' });
+  }
+  if (cleanPass.length < 6) {
+    return res.status(400).json({ error: 'Parol kamida 6 belgidan iborat bo\'lishi kerak' });
+  }
+
+  try {
+    const hash = bcrypt.hashSync(cleanPass, 12);
+    const user = createUser(cleanUser, hash, cleanRole);
+    addAuditLog(req.session.username, 'create_user', `${cleanUser} (${cleanRole})`);
+    res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role } });
+  } catch (e) {
+    if (e.message === 'UNIQUE') {
+      return res.status(400).json({ error: 'Bu login allaqachon mavjud' });
+    }
+    res.status(500).json({ error: 'Foydalanuvchi yaratishda xato' });
+  }
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (req.session.userId === targetId) {
+    return res.status(400).json({ error: 'O\'zingizning hisobingizni o\'chira olmaysiz' });
+  }
+  const ok = deleteUser(targetId);
+  if (!ok) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  addAuditLog(req.session.username, 'delete_user', `ID: ${targetId}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/users/:id/password', requireAdmin, (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const { newPassword } = req.body || {};
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'Yangi parol kamida 6 ta belgi bo\'lishi kerak' });
+  }
+  const hash = bcrypt.hashSync(newPassword, 12);
+  const ok = updateUserPassword(targetId, hash);
+  if (!ok) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  addAuditLog(req.session.username, 'admin_reset_password', `ID: ${targetId}`);
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/audit-log', requireAdmin, (req, res) => {
   res.json(getAuditLog(100));
 });
@@ -247,11 +347,19 @@ app.get('/api/device/schedule', requireDeviceKey, (req, res) => {
   if (wasOffline) {
     addAuditLog(null, 'device_connected', `IP: ${req.ip}`);
   }
-  // Diqqat: har bir qo'ng'iroq vaqti endi o'z ichida ring_pattern/pulse_count/
-  // pulse_gap_sec maydonlariga ega (getFullSchedule orqali keladi), shuning
-  // uchun bu yerda alohida umumiy "ringStyle" yuborilmaydi.
+
   const payload = getFullSchedule();
   payload.muted = getSetting('bell_muted') === true;
+
+  // Agar admin tomonidan darhol chalish buyrug'i berilgan bo'lsa
+  const cmd = popPendingCommand();
+  if (cmd) {
+    // Buyruq 60 soniyadan eski bo'lmasa yuboramiz
+    if (Date.now() - (cmd.created_at || Date.now()) < 60 * 1000) {
+      payload.command = cmd;
+    }
+  }
+
   res.json(payload);
 });
 
@@ -266,4 +374,5 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server ishga tushdi: http://localhost:${PORT}`);
   console.log('Agar admin hisob hali yaratilmagan bo\'lsa: node create-admin.js <login> <parol>');
+  initTelegramBot();
 });
