@@ -1,0 +1,79 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "maksim.gorkiy",
+      "password_hash": "$2a$12$VC3hV0HwoY/aYz4d3aKgp.m5Ldnnjz7PBwM2qvedwHWgAsOPShIbe",
+      "role": "admin",
+      "created_at": "2026-08-15T06:56:37.056Z"
+    }
+  ],
+  "settings": {
+    "device_api_key": "b517e855d8243cfcb4f7121c2335b8dd961b09f2a3ebdbe8",
+    "school_name": "25-son maktab"
+  },
+  "scheduleDay": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": [],
+    "6": []
+  },
+  "auditLog": [
+    {
+      "id": 7,
+      "username": "maksim.gorkiy",
+      "action": "login_success",
+      "detail": "",
+      "created_at": "2026-08-15T06:57:44.483Z"
+    },
+    {
+      "id": 6,
+      "username": "maksim.gorkiy",
+      "action": "logout",
+      "detail": "",
+      "created_at": "2026-08-15T06:57:38.680Z"
+    },
+    {
+      "id": 5,
+      "username": "maksim.gorkiy",
+      "action": "update_school_name",
+      "detail": "25-son maktab",
+      "created_at": "2026-08-15T06:57:36.874Z"
+    },
+    {
+      "id": 4,
+      "username": "maksim.gorkiy",
+      "action": "login_success",
+      "detail": "",
+      "created_at": "2026-08-15T06:57:18.411Z"
+    },
+    {
+      "id": 3,
+      "username": "maksim.gorkiy",
+      "action": "logout",
+      "detail": "",
+      "created_at": "2026-08-15T06:57:16.093Z"
+    },
+    {
+      "id": 2,
+      "username": "maksim.gorkiy",
+      "action": "update_school_name",
+      "detail": "1-son maktab",
+      "created_at": "2026-08-15T06:57:14.053Z"
+    },
+    {
+      "id": 1,
+      "username": "maksim.gorkiy",
+      "action": "login_success",
+      "detail": "",
+      "created_at": "2026-08-15T06:56:52.241Z"
+    }
+  ],
+  "nextId": {
+    "user": 2,
+    "dayItem": 1,
+    "log": 8
+  }
+}

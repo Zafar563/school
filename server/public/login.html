@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qo'ng'iroq tizimi</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="login-body">
+  <div class="login-wrap">
+    <div class="login-mark">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+      <div class="login-brand-text">
+        <span class="login-brand-main" id="brandSchoolName">Maktab</span>
+        <span class="login-brand-sub">Qo'ng'iroq boshqaruv tizimi</span>
+      </div>
+    </div>
+
+    <div class="login-card">
+      <form id="loginForm">
+        <div class="field-group">
+          <label for="username">Login</label>
+          <input type="text" id="username" autocomplete="username" placeholder="Loginni kiriting" required>
+        </div>
+        <div class="field-group">
+          <label for="password">Parol</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="Parolni kiriting" required>
+        </div>
+        <button type="submit" id="loginBtn">Kirish</button>
+        <div class="error" id="errBox"></div>
+      </form>
+    </div>
+  </div>
+
+<script>
+fetch('/api/branding').then(r => r.json()).then(d => {
+  if (d.schoolName) {
+    document.getElementById('brandSchoolName').textContent = d.schoolName;
+    document.title = d.schoolName + " — Qo'ng'iroq tizimi";
+  }
+}).catch(() => {});
+
+const form = document.getElementById('loginForm');
+const errBox = document.getElementById('errBox');
+const btn = document.getElementById('loginBtn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errBox.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Tekshirilmoqda...';
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errBox.textContent = data.error || 'Xatolik yuz berdi';
+      btn.disabled = false;
+      btn.textContent = 'Kirish';
+      return;
+    }
+    window.location.href = '/dashboard.html';
+  } catch (err) {
+    errBox.textContent = 'Serverga ulanib bo\'lmadi';
+    btn.disabled = false;
+    btn.textContent = 'Kirish';
+  }
+});
+</script>
+</body>
+</html>

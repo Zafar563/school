@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boshqaruv paneli</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+      </svg>
+      <span id="sidebarSchoolName">Maktab</span>
+    </div>
+    <nav>
+      <a data-tab="schedule" class="active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        Jadval
+      </a>
+      <a data-tab="device" class="admin-only">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        Qurilma
+        <span class="device-dot" id="deviceDot" title="Holat noma'lum"></span>
+      </a>
+      <a data-tab="account">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        Hisob
+      </a>
+      <a data-tab="log" class="admin-only">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        Tarix
+      </a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="user-box">
+      <b id="userLabel">—</b>
+      <span id="userRoleLabel">—</span>
+      <button class="logout-btn" id="logoutBtn">Chiqish</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <h1 id="pageTitle">Qo'ng'iroq jadvali</h1>
+      </div>
+      <div class="header-right">
+        <button class="mute-switch" id="muteSwitch">
+          <span class="mute-dot"></span>
+          <span id="muteLabel">Qo'ng'iroq yoqilgan</span>
+        </button>
+        <div class="clock-box">
+          <div id="clockTime">--:--:--</div>
+          <div class="day-label" id="clockDay">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mute-banner" id="muteBanner">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+      Qo'ng'iroq hozir <b>o'chirilgan</b>. Yoqish uchun yuqoridagi tugmani bosing.
+    </div>
+
+    <!-- SCHEDULE TAB -->
+    <div id="tab-schedule">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Haftalik jadval</h2>
+            <p class="hint">Har kunga xohlagancha qo'ng'iroq vaqti qo'shing va saqlang.</p>
+          </div>
+        </div>
+        <div class="tabs" id="dayTabs"></div>
+        <div id="dayList"></div>
+        <div class="list-empty" id="dayEmpty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <p>Bu kun uchun hali vaqt qo'shilmagan</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="addRowBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Vaqt qo'shish
+          </button>
+          <button class="btn btn-primary" id="saveDayBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Saqlash
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEVICE TAB -->
+    <div id="tab-device" style="display:none">
+      <div class="card">
+        <h2>ESP32 — Server aloqasi</h2>
+        <p class="hint">Qurilma har 2 daqiqada serverga so'rov yuborib, jadvalni yangilaydi.</p>
+
+        <!-- ANIMATED SCENE -->
+        <div class="conn-scene" id="connScene">
+          <div class="conn-node">
+            <div class="conn-chip" id="connChip">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="7" y="7" width="10" height="10" rx="1"/>
+                <path d="M7 9H5M7 12H4M7 15H5"/>
+                <path d="M17 9h2M17 12h3M17 15h2"/>
+                <path d="M9 7V5M12 7V4M15 7V5"/>
+                <path d="M9 17v2M12 17v3M15 17v2"/>
+              </svg>
+              <span class="conn-chip-pulse" id="connChipPulse"></span>
+            </div>
+            <div class="conn-node-label">ESP32</div>
+            <div class="conn-node-sub">Qurilma</div>
+          </div>
+
+          <div class="conn-link">
+            <div class="conn-link-track">
+              <div class="conn-link-line"></div>
+              <div class="conn-packet p1" id="pkt1"></div>
+              <div class="conn-packet p2" id="pkt2"></div>
+              <div class="conn-packet p3" id="pkt3"></div>
+            </div>
+            <div class="conn-link-label" id="connLinkLabel">so'rov yuborilmoqda...</div>
+          </div>
+
+          <div class="conn-node">
+            <div class="conn-server" id="connServer">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3" width="20" height="5" rx="1"/>
+                <rect x="2" y="10" width="20" height="5" rx="1"/>
+                <rect x="2" y="17" width="20" height="4" rx="1"/>
+                <circle cx="6" cy="5.5" r="1" fill="currentColor"/>
+                <circle cx="6" cy="12.5" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="conn-node-label">Server</div>
+            <div class="conn-node-sub" id="connServerSub">—</div>
+          </div>
+        </div>
+
+        <div class="conn-status-row">
+          <div class="conn-badge" id="connBadge">
+            <span class="conn-badge-dot" id="connBadgeDot"></span>
+            <span id="deviceStatusText">Yuklanmoqda...</span>
+          </div>
+          <div class="conn-detail" id="deviceStatusDetail">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Ulanish kaliti (API Key)</h2>
+        <p class="hint">Bu kalitni Arduino dasturiga kiritasiz. Hech kimga ko'rsatmang.</p>
+        <div class="key-box-row">
+          <div class="key-box" id="apiKeyBox">yuklanmoqda...</div>
+          <button class="btn btn-ghost" id="copyKeyBtn">Nusxalash</button>
+        </div>
+        <div class="btn-row" style="margin-top:16px; padding-top:16px; border-top: 1px solid var(--border);">
+          <button class="btn btn-ghost" id="regenKeyBtn">Kalitni yangilash</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACCOUNT TAB -->
+    <div id="tab-account" style="display:none">
+      <div class="card admin-only">
+        <h2>Maktab nomi</h2>
+        <p class="hint">Login va boshqaruv sahifalarida ko'rinadigan nom. Istalgan maktab uchun o'zgartirishingiz mumkin.</p>
+        <div class="form-fields">
+          <div class="field-group">
+            <label>Nomi</label>
+            <input type="text" id="schoolNameInput" placeholder="Masalan: 25-son maktab" maxlength="60">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="saveSchoolNameBtn">Saqlash</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Parolni o'zgartirish</h2>
+        <p class="hint">Kamida 8 belgidan iborat yangi parol kiriting.</p>
+        <div class="form-fields">
+          <div class="field-group">
+            <label>Joriy parol</label>
+            <input type="password" id="curPass" placeholder="Joriy parolni kiriting">
+          </div>
+          <div class="field-group">
+            <label>Yangi parol</label>
+            <input type="password" id="newPass" placeholder="Yangi parolni kiriting (min 8 belgi)">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="changePassBtn">Parolni yangilash</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOG TAB -->
+    <div id="tab-log" style="display:none">
+      <div class="card">
+        <h2>Amallar tarixi</h2>
+        <table class="log-table" id="logTable">
+          <thead><tr><th>Vaqt</th><th>Foydalanuvchi</th><th>Amal</th><th>Tafsilot</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/dashboard.js"></script>
+</body>
+</html>
