@@ -474,11 +474,122 @@ function pollDeviceStatus() {
       toast(d.online ? '📶 Qurilma ulandi' : '⚠️ Qurilma aloqasi uzildi');
     }
     deviceWasOnline = d.online;
+
+    if (d.geo) {
+      updateDeviceMap(d.geo, d.online);
+    }
   }).catch(() => {});
+}
+
+// ============================================================
+// DEVICE MAP (LEAFLET + OPENSTREETMAP)
+// ============================================================
+let deviceMap = null;
+let deviceMarker = null;
+let customPinnedCoords = null;
+
+function initDeviceMap() {
+  const mapEl = document.getElementById('deviceMap');
+  if (!mapEl || typeof L === 'undefined' || deviceMap) return;
+
+  try {
+    deviceMap = L.map('deviceMap').setView([41.2995, 69.2401], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(deviceMap);
+
+    const schoolIcon = L.divIcon({
+      className: 'school-map-pin',
+      html: '<div style="background:#4F46E5; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px rgba(79,70,229,0.5); font-size:16px; border:2px solid white;">🔔</div>',
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+
+    deviceMarker = L.marker([41.2995, 69.2401], {
+      icon: schoolIcon,
+      draggable: isAdmin()
+    }).addTo(deviceMap);
+
+    deviceMarker.bindPopup('<b>ESP32 Maktab Qo\'ng\'irog\'i</b><br>Joylashuvi aniqlanmoqda...');
+
+    if (isAdmin()) {
+      deviceMarker.on('dragend', function (e) {
+        const pos = e.target.getLatLng();
+        customPinnedCoords = { lat: pos.lat, lon: pos.lng };
+        const saveBtn = document.getElementById('saveLocationBtn');
+        if (saveBtn) {
+          saveBtn.style.display = 'inline-flex';
+          saveBtn.textContent = `💾 Saqlash (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)})`;
+        }
+        toast('Yangi nuqta tanlandi. Saqlash uchun tugmani bosing.');
+      });
+    }
+  } catch (e) {}
+}
+
+const saveLocationBtn = document.getElementById('saveLocationBtn');
+if (saveLocationBtn) {
+  saveLocationBtn.onclick = () => {
+    if (!customPinnedCoords) return;
+    fetch('/api/admin/device-location', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(customPinnedCoords)
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        toast('Joylashuv muvaffaqiyatli saqlandi ✓');
+        saveLocationBtn.style.display = 'none';
+        pollDeviceStatus();
+      } else {
+        toast(d.error || 'Xatolik', 'error');
+      }
+    }).catch(() => toast('Server bilan aloqada xato', 'error'));
+  };
+}
+
+function updateDeviceMap(geo, isOnline) {
+  if (!geo) return;
+  initDeviceMap();
+
+  const lat = geo.lat || 41.2995;
+  const lon = geo.lon || 69.2401;
+
+  const city = geo.city || 'Toshkent';
+  const region = geo.region ? ` (${geo.region})` : '';
+  const isp = geo.isp || '—';
+  const ip = geo.ip || '—';
+
+  const cityEl = document.getElementById('geoCityVal');
+  const ispEl = document.getElementById('geoIspVal');
+  const coordsEl = document.getElementById('geoCoordsVal');
+  const ipEl = document.getElementById('geoIpVal');
+  const mapCityText = document.getElementById('mapCityText');
+
+  if (cityEl) cityEl.textContent = `${city}${region}`;
+  if (ispEl) ispEl.textContent = isp;
+  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+  if (ipEl) ipEl.textContent = ip;
+  if (mapCityText) mapCityText.textContent = `${city}`;
+
+  if (deviceMap && deviceMarker) {
+    deviceMarker.setLatLng([lat, lon]);
+    deviceMarker.getPopup().setContent(`<b>🔔 ${currentSchoolName || 'Maktab'}</b><br>Holati: ${isOnline ? '<span style="color:#059669;font-weight:600">🟢 Onlayn</span>' : '<span style="color:#DC2626;font-weight:600">🔴 Oflayn</span>'}<br>Shahar: ${city}<br>Provayder: ${isp}<br>IP: ${ip}`);
+    
+    setTimeout(() => {
+      if (deviceMap) {
+        deviceMap.invalidateSize();
+        deviceMap.panTo([lat, lon]);
+      }
+    }, 200);
+  }
 }
 
 function loadDevice() {
   pollDeviceStatus();
+  setTimeout(() => {
+    if (deviceMap) deviceMap.invalidateSize();
+  }, 200);
 }
 
 function startDevicePolling() {

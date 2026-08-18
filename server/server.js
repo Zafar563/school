@@ -261,19 +261,97 @@ app.post('/api/admin/device-key/regenerate', requireAdmin, async (req, res) => {
   }
 });
 
+async function resolveIpGeo(ip) {
+  if (!ip) return null;
+  const cleanIp = ip.replace(/^.*:/, '').trim();
+  if (!cleanIp || cleanIp === '127.0.0.1' || cleanIp === 'localhost' || cleanIp.startsWith('192.168.') || cleanIp.startsWith('10.') || cleanIp.startsWith('172.16.')) {
+    return {
+      ip: cleanIp || '127.0.0.1',
+      city: 'Toshkent (Lokal tarmoq)',
+      region: 'Toshkent',
+      country: "O'zbekiston",
+      lat: 41.2995,
+      lon: 69.2401,
+      isp: 'Lokal WiFi',
+      isLocal: true
+    };
+  }
+
+  try {
+    const res = await fetch(`http://ip-api.com/json/${cleanIp}?fields=status,country,regionName,city,lat,lon,isp`, {
+      headers: { 'User-Agent': 'SchoolBellSystem/1.0' },
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.status === 'success') {
+        return {
+          ip: cleanIp,
+          city: data.city || 'Noma\'lum shahar',
+          region: data.regionName || '',
+          country: data.country || "O'zbekiston",
+          lat: data.lat || 41.2995,
+          lon: data.lon || 69.2401,
+          isp: data.isp || 'Noma\'lum',
+          isLocal: false
+        };
+      }
+    }
+  } catch (err) {}
+  return null;
+}
+
 app.get('/api/admin/device-status', requireLogin, async (req, res) => {
   try {
     const lastSeen = await getSetting('device_last_seen');
     const online = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
     const lastIp = await getSetting('device_last_ip');
+    const geo = await getSetting('device_geo');
+    const customCoords = await getSetting('device_custom_coords');
+
+    const defaultGeo = {
+      ip: lastIp || '127.0.0.1',
+      city: 'Toshkent',
+      region: 'Toshkent',
+      country: "O'zbekiston",
+      lat: 41.2995,
+      lon: 69.2401,
+      isp: 'Kutilmoqda...',
+      isDefault: true
+    };
+
     res.json({
       lastSeen,
       lastIp,
       online,
-      checkIntervalSec: 120
+      checkIntervalSec: 120,
+      geo: customCoords || geo || defaultGeo
     });
   } catch (e) {
     res.status(500).json({ error: 'Holatni yuklashda xato' });
+  }
+});
+
+app.post('/api/admin/device-location', requireAdmin, async (req, res) => {
+  const { lat, lon, label } = req.body || {};
+  if (typeof lat !== 'number' || typeof lon !== 'number') {
+    return res.status(400).json({ error: 'Koordinatalar noto\'g\'ri' });
+  }
+  try {
+    const geo = (await getSetting('device_geo')) || {};
+    const updated = {
+      ...geo,
+      lat,
+      lon,
+      customPinned: true,
+      customLabel: (label || '').trim(),
+      updated_at: new Date().toISOString()
+    };
+    await setSetting('device_custom_coords', updated);
+    await addAuditLog(req.session.username, 'update_device_location', `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    res.json({ ok: true, geo: updated });
+  } catch (e) {
+    res.status(500).json({ error: 'Saqlashda xato' });
   }
 });
 
@@ -463,14 +541,25 @@ async function requireDeviceKey(req, res, next) {
 
 app.get('/api/device/schedule', requireDeviceKey, async (req, res) => {
   try {
+    const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : req.ip) || req.socket.remoteAddress;
     const prevSeen = await getSetting('device_last_seen');
     const wasOffline = !prevSeen || (Date.now() - new Date(prevSeen).getTime()) > 3 * 60 * 1000;
     await setSetting('device_last_seen', new Date().toISOString());
-    await setSetting('device_last_ip', req.ip);
+    await setSetting('device_last_ip', clientIp);
     if (wasOffline) {
       const userTag = req.deviceUser ? ` (${req.deviceUser.username})` : '';
-      await addAuditLog(null, 'device_connected', `IP: ${req.ip}${userTag}`);
+      await addAuditLog(null, 'device_connected', `IP: ${clientIp}${userTag}`);
     }
+
+    // Geolokatsiyani asinxron yangilab qo'yish
+    resolveIpGeo(clientIp).then(async (geo) => {
+      if (geo) {
+        const existingGeo = await getSetting('device_geo');
+        if (!existingGeo || existingGeo.ip !== clientIp) {
+          await setSetting('device_geo', { ...geo, updated_at: new Date().toISOString() });
+        }
+      }
+    }).catch(() => {});
 
     const payload = await getFullSchedule();
     const isMuted = await getSetting('bell_muted');

@@ -929,3 +929,40 @@ body {
   .time-row { flex-wrap: wrap; }
   .time-row input[type=text] { order: -1; width: 100%; }
 }
+
+/* ============================================================
+   MAP & GEOLOCATION
+   ============================================================ */
+.map-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.map-stat-item {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.map-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.map-stat-item b {
+  font-size: 13.5px;
+  color: var(--text-main);
+  word-break: break-all;
+}
+
+[data-theme="dark"] #deviceMap .leaflet-tile {
+  filter: brightness(0.8) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3);
+}
+[data-theme="dark"] .leaflet-container {
+  background: #111827;
+}
