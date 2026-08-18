@@ -487,10 +487,16 @@ function pollDeviceStatus() {
 let deviceMap = null;
 let deviceMarker = null;
 let customPinnedCoords = null;
+let pendingGeoData = null;
+let pendingOnlineState = null;
 
 function initDeviceMap() {
   const mapEl = document.getElementById('deviceMap');
-  if (!mapEl || typeof L === 'undefined' || deviceMap) return;
+  if (!mapEl || typeof L === 'undefined' || deviceMap) return false;
+
+  // Leaflet xaritani faqat tab ko'rinayotganda yaratish mumkin
+  const tabEl = document.getElementById('tab-device');
+  if (tabEl && tabEl.style.display === 'none') return false;
 
   try {
     deviceMap = L.map('deviceMap').setView([41.2995, 69.2401], 12);
@@ -525,7 +531,14 @@ function initDeviceMap() {
         toast('Yangi nuqta tanlandi. Saqlash uchun tugmani bosing.');
       });
     }
+
+    // Agar oldindan yig'ilgan geo ma'lumotlar bo'lsa, hozir ko'rsatish
+    if (pendingGeoData) {
+      updateDeviceMap(pendingGeoData, pendingOnlineState);
+    }
+    return true;
   } catch (e) {}
+  return false;
 }
 
 const saveLocationBtn = document.getElementById('saveLocationBtn');
@@ -550,7 +563,10 @@ if (saveLocationBtn) {
 
 function updateDeviceMap(geo, isOnline) {
   if (!geo) return;
-  initDeviceMap();
+
+  // Geo ma'lumotlarini doimo saqlash (xarita hali yaratilmagan bo'lsa)
+  pendingGeoData = geo;
+  pendingOnlineState = isOnline;
 
   const lat = geo.lat || 41.2995;
   const lon = geo.lon || 69.2401;
@@ -572,6 +588,11 @@ function updateDeviceMap(geo, isOnline) {
   if (ipEl) ipEl.textContent = ip;
   if (mapCityText) mapCityText.textContent = `${city}`;
 
+  // Xarita hali tayyor emas bo'lsa, yaratishga urinish
+  if (!deviceMap) {
+    initDeviceMap();
+  }
+
   if (deviceMap && deviceMarker) {
     deviceMarker.setLatLng([lat, lon]);
     deviceMarker.getPopup().setContent(`<b>🔔 ${currentSchoolName || 'Maktab'}</b><br>Holati: ${isOnline ? '<span style="color:#059669;font-weight:600">🟢 Onlayn</span>' : '<span style="color:#DC2626;font-weight:600">🔴 Oflayn</span>'}<br>Shahar: ${city}<br>Provayder: ${isp}<br>IP: ${ip}`);
@@ -587,9 +608,19 @@ function updateDeviceMap(geo, isOnline) {
 
 function loadDevice() {
   pollDeviceStatus();
+  // Tab ochilganda xarita yaratish yoki o'lchamini yangilash
   setTimeout(() => {
-    if (deviceMap) deviceMap.invalidateSize();
-  }, 200);
+    if (!deviceMap) {
+      initDeviceMap();
+    }
+    if (deviceMap) {
+      deviceMap.invalidateSize();
+      // Agar geo ma'lumot mavjud bo'lsa, xaritani yangilash
+      if (pendingGeoData) {
+        updateDeviceMap(pendingGeoData, pendingOnlineState);
+      }
+    }
+  }, 300);
 }
 
 function startDevicePolling() {
