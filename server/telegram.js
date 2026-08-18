@@ -11,10 +11,13 @@ let isPolling = false;
 let lastUpdateId = 0;
 let lastDeviceStatus = null; // 'online' | 'offline'
 
-function initTelegramBot() {
-  // DB dan yoki .env dan tokenlarni olamiz
-  botToken = getSetting('telegram_bot_token') || process.env.TELEGRAM_BOT_TOKEN || '';
-  adminChatId = getSetting('telegram_admin_chat_id') || process.env.TELEGRAM_ADMIN_CHAT_ID || '';
+async function initTelegramBot() {
+  try {
+    botToken = (await getSetting('telegram_bot_token')) || process.env.TELEGRAM_BOT_TOKEN || '';
+    adminChatId = (await getSetting('telegram_admin_chat_id')) || process.env.TELEGRAM_ADMIN_CHAT_ID || '';
+  } catch (e) {
+    return;
+  }
 
   if (!botToken) {
     console.log('ℹ️ Telegram Bot Token sozlanmagan (ixtiyoriy).');
@@ -49,7 +52,7 @@ async function sendTelegramMessage(chatId, text, replyMarkup = null) {
 }
 
 async function notifyAdmin(text) {
-  const targetChatId = getSetting('telegram_admin_chat_id') || adminChatId;
+  const targetChatId = (await getSetting('telegram_admin_chat_id')) || adminChatId;
   if (targetChatId) {
     await sendTelegramMessage(targetChatId, text);
   }
@@ -61,8 +64,9 @@ async function handleMessage(msg) {
   const text = (msg.text || '').trim();
 
   // Agar admin chat ID hali DB da saqlanmagan bo'lsa va /start bosilsa, adminga bog'lash
-  if (!getSetting('telegram_admin_chat_id')) {
-    setSetting('telegram_admin_chat_id', String(chatId));
+  const currentAdminChat = await getSetting('telegram_admin_chat_id');
+  if (!currentAdminChat) {
+    await setSetting('telegram_admin_chat_id', String(chatId));
   }
 
   const mainMenu = {
@@ -75,15 +79,15 @@ async function handleMessage(msg) {
   };
 
   if (text === '/start' || text === 'start') {
-    const schoolName = getSetting('school_name') || 'Maktab';
+    const schoolName = (await getSetting('school_name')) || 'Maktab';
     const welcome = `🔔 <b>${schoolName} Qo'ng'irog'i Botiga xush kelibsiz!</b>\n\nQuyidagi tugmalar orqali tizimni boshqarishingiz mumkin:`;
     return sendTelegramMessage(chatId, welcome, mainMenu);
   }
 
   if (text === '📊 Holat' || text === '/status') {
-    const lastSeen = getSetting('device_last_seen');
+    const lastSeen = await getSetting('device_last_seen');
     const online = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
-    const isMuted = getSetting('bell_muted') === true;
+    const isMuted = (await getSetting('bell_muted')) === true;
 
     let res = `<b>📊 Tizim Holati:</b>\n\n`;
     res += `• <b>ESP32 Qurilma:</b> ${online ? '🟢 Onlayn' : '🔴 Oflayn'}\n`;
@@ -96,7 +100,7 @@ async function handleMessage(msg) {
   if (text === '📅 Bugungi jadval' || text === '/schedule') {
     const d = new Date().getDay(); // 0-Yakshanba
     const dayNames = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba', 0:'Yakshanba' };
-    const full = getFullSchedule();
+    const full = await getFullSchedule();
     const items = (full.days && full.days[d] && full.days[d].items) || [];
 
     let res = `<b>📅 ${dayNames[d]} kungi jadval:</b>\n\n`;
@@ -113,37 +117,37 @@ async function handleMessage(msg) {
   }
 
   if (text === '🔔 Sinov (5s)' || text === '/test') {
-    setPendingCommand({
+    await setPendingCommand({
       action: 'ring',
       duration_sec: 5,
       ring_pattern: 'continuous',
       created_at: Date.now()
     });
-    addAuditLog(`Telegram:${chatId}`, 'manual_ring', 'Telegram orqali 5s sinov qo\'ng\'irog\'i');
+    await addAuditLog(`Telegram:${chatId}`, 'manual_ring', 'Telegram orqali 5s sinov qo\'ng\'irog\'i');
     return sendTelegramMessage(chatId, '🔔 <b>Sinov qo\'ng\'irog\'i yuborildi (5 soniya).</b>\nESP32 keyingi so\'rovida darhol chaladi.', mainMenu);
   }
 
   if (text === '🚨 Favqulodda (30s)' || text === '/alarm') {
-    setPendingCommand({
+    await setPendingCommand({
       action: 'ring',
       duration_sec: 30,
       ring_pattern: 'continuous',
       created_at: Date.now()
     });
-    addAuditLog(`Telegram:${chatId}`, 'manual_ring', '🚨 Telegram orqali 30s FAVQULODDA TREVOGA');
+    await addAuditLog(`Telegram:${chatId}`, 'manual_ring', '🚨 Telegram orqali 30s FAVQULODDA TREVOGA');
     return sendTelegramMessage(chatId, '🚨 <b>DIQQAT: Favqulodda signal yuborildi (30 soniya uzluksiz)!</b>', mainMenu);
   }
 
   if (text === '🔕 Qo\'ng\'iroqni to\'xtatish' || text === '/mute') {
-    setSetting('bell_muted', true);
-    setPendingCommand({ action: 'stop' });
-    addAuditLog(`Telegram:${chatId}`, 'bell_muted', 'Telegram orqali to\'xtatildi');
+    await setSetting('bell_muted', true);
+    await setPendingCommand({ action: 'stop' });
+    await addAuditLog(`Telegram:${chatId}`, 'bell_muted', 'Telegram orqali to\'xtatildi');
     return sendTelegramMessage(chatId, '🔕 <b>Qo\'ng\'iroq tizimi o\'chirildi (Mute).</b>\nQayta yoqilmaguncha jiringlamaydi.', mainMenu);
   }
 
   if (text === '🔔 Yoqish' || text === '/unmute') {
-    setSetting('bell_muted', false);
-    addAuditLog(`Telegram:${chatId}`, 'bell_unmuted', 'Telegram orqali yoqildi');
+    await setSetting('bell_muted', false);
+    await addAuditLog(`Telegram:${chatId}`, 'bell_unmuted', 'Telegram orqali yoqildi');
     return sendTelegramMessage(chatId, '🔔 <b>Qo\'ng\'iroq tizimi qayta yoqildi (Faol).</b>', mainMenu);
   }
 }
@@ -166,31 +170,32 @@ async function pollTelegramUpdates() {
         }
       }
     } catch (e) {
-      // Aloqa uzilsa biroz kutib qayta urinadi
       await new Promise(r => setTimeout(r, 5000));
     }
   }
 }
 
-// ---------------- QURILMA MONITORINGI (OFFLINE / ONLINE XABARLARI) ----------------
+// ---------------- QURILMA MONITORINGI ----------------
 function startDeviceWatcher() {
   setInterval(async () => {
-    const lastSeen = getSetting('device_last_seen');
-    const isOnline = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
+    try {
+      const lastSeen = await getSetting('device_last_seen');
+      const isOnline = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
 
-    if (lastDeviceStatus === null) {
-      lastDeviceStatus = isOnline ? 'online' : 'offline';
-      return;
-    }
+      if (lastDeviceStatus === null) {
+        lastDeviceStatus = isOnline ? 'online' : 'offline';
+        return;
+      }
 
-    if (isOnline && lastDeviceStatus === 'offline') {
-      lastDeviceStatus = 'online';
-      await notifyAdmin('🟢 <b>Xushxabar:</b> ESP32 maktab qo\'ng\'iroq qurilmasi qayta <b>ONLAYN</b> bo\'ldi!');
-    } else if (!isOnline && lastDeviceStatus === 'online') {
-      lastDeviceStatus = 'offline';
-      await notifyAdmin('⚠️ <b>OGOHLANTIRISH:</b> ESP32 qo\'ng\'iroq qurilmasi 3 daqiqadan beri <b>OFLAYN</b>!\n<i>(Ehtimol maktabda elektr toki o\'chgan yoki WiFi uzilgan).</i>');
-    }
-  }, 60 * 1000); // Har daqiqada tekshiradi
+      if (isOnline && lastDeviceStatus === 'offline') {
+        lastDeviceStatus = 'online';
+        await notifyAdmin('🟢 <b>Xushxabar:</b> ESP32 maktab qo\'ng\'iroq qurilmasi qayta <b>ONLAYN</b> bo\'ldi!');
+      } else if (!isOnline && lastDeviceStatus === 'online') {
+        lastDeviceStatus = 'offline';
+        await notifyAdmin('⚠️ <b>OGOHLANTIRISH:</b> ESP32 qo\'ng\'iroq qurilmasi 3 daqiqadan beri <b>OFLAYN</b>!\n<i>(Ehtimol maktabda elektr toki o\'chgan yoki WiFi uzilgan).</i>');
+      }
+    } catch (e) {}
+  }, 60 * 1000);
 }
 
 module.exports = {

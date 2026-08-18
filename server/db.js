@@ -1,236 +1,244 @@
-// Yengil fayl-asosli ma'lumotlar bazasi. Native kompilyatsiya talab qilmaydi,
-// shuning uchun har qanday hosting muhitida (Render, Railway, oddiy VPS,
-// hatto eski shared-hosting) muammosiz ishlaydi.
-
-const fs = require('fs');
-const path = require('path');
+require('dotenv').config();
+const { Pool } = require('pg');
 const crypto = require('crypto');
+const { runMigrations } = require('./migrate');
 
-const DATA_DIR = process.env.DATA_DIR || __dirname;
-const DB_FILE = path.join(DATA_DIR, 'data.json');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/school_bell',
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false
+});
 
-function defaultData() {
-  return {
-    users: [],               // {id, username, password_hash, role, created_at}
-    settings: {},             // {device_api_key: "...", device_last_seen: "...", device_last_ip: "..."}
-    scheduleDay: { "1": [], "2": [], "3": [], "4": [], "5": [], "6": [] },
-    holidays: [],            // [{id: 1, date: "2026-03-21", name: "Navro'z bayrami"}]
-    auditLog: [],             // {username, action, detail, created_at}
-    nextId: { user: 1, dayItem: 1, log: 1, holiday: 1 }
-  };
-}
+let isInitialized = false;
 
-let data;
+async function initDb() {
+  if (isInitialized) return;
+  await runMigrations();
 
-function load() {
-  if (!fs.existsSync(DB_FILE)) {
-    data = defaultData();
-    data.settings.device_api_key = crypto.randomBytes(24).toString('hex');
-    persist();
-  } else {
-    data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    if (!data.settings.device_api_key) {
-      data.settings.device_api_key = crypto.randomBytes(24).toString('hex');
-      persist();
-    }
-    if (!data.holidays) data.holidays = [];
-    if (!data.nextId.holiday) data.nextId.holiday = 1;
-    let usersUpdated = false;
-    (data.users || []).forEach(u => {
-      if (!u.api_key) {
-        u.api_key = crypto.randomBytes(24).toString('hex');
-        usersUpdated = true;
-      }
-    });
-    if (usersUpdated) persist();
+  // Standart device_api_key bo'lmasa yaratib qo'yish
+  const existingKey = await getSetting('device_api_key');
+  if (!existingKey) {
+    const randomKey = crypto.randomBytes(24).toString('hex');
+    await setSetting('device_api_key', randomKey);
   }
+  isInitialized = true;
 }
-
-function persist() {
-  // Atomik yozish: avval vaqtinchalik faylga yozamiz, keyin almashtiramiz —
-  // shu tarzda server to'satdan o'chib qolsa ham fayl buzilmaydi.
-  const tmp = DB_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, DB_FILE);
-}
-
-load();
 
 // ---------------- USERS ----------------
-function findUserByUsername(username) {
-  return data.users.find(u => u.username === username) || null;
+async function findUserByUsername(username) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1 LIMIT 1', [username]);
+  return rows[0] || null;
 }
-function findUserById(id) {
-  return data.users.find(u => u.id === id) || null;
+
+async function findUserById(id) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [parseInt(id, 10)]);
+  return rows[0] || null;
 }
-function findUserByApiKey(apiKey) {
+
+async function findUserByApiKey(apiKey) {
   if (!apiKey) return null;
-  return data.users.find(u => u.api_key === apiKey) || null;
+  const { rows } = await pool.query('SELECT * FROM users WHERE api_key = $1 LIMIT 1', [apiKey]);
+  return rows[0] || null;
 }
-function createUser(username, passwordHash, role = 'admin', apiKey = null) {
-  if (findUserByUsername(username)) throw new Error('UNIQUE');
+
+async function createUser(username, passwordHash, role = 'admin', apiKey = null) {
   const key = apiKey || crypto.randomBytes(24).toString('hex');
-  const user = {
-    id: data.nextId.user++,
-    username,
-    password_hash: passwordHash,
-    role,
-    api_key: key,
-    created_at: new Date().toISOString()
-  };
-  data.users.push(user);
-  persist();
-  return user;
-}
-function updateUserPassword(userId, passwordHash) {
-  const user = findUserById(userId);
-  if (!user) return false;
-  user.password_hash = passwordHash;
-  persist();
-  return true;
-}
-function regenerateUserApiKey(userId) {
-  const user = findUserById(parseInt(userId, 10));
-  if (!user) return null;
-  user.api_key = crypto.randomBytes(24).toString('hex');
-  persist();
-  return user.api_key;
-}
-function getAllUsers() {
-  return data.users.map(u => ({
-    id: u.id,
-    username: u.username,
-    role: u.role || 'user',
-    api_key: u.api_key || '',
-    created_at: u.created_at
-  }));
-}
-function deleteUser(userId) {
-  const numId = parseInt(userId, 10);
-  const beforeLen = data.users.length;
-  data.users = data.users.filter(u => u.id !== numId);
-  if (data.users.length !== beforeLen) {
-    persist();
-    return true;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO users (username, password_hash, role, api_key)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [username, passwordHash, role, key]
+    );
+    return rows[0];
+  } catch (err) {
+    if (err.code === '23505') { // Postgres unique_violation
+      throw new Error('UNIQUE');
+    }
+    throw err;
   }
-  return false;
+}
+
+async function updateUserPassword(userId, passwordHash) {
+  const res = await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, parseInt(userId, 10)]);
+  return res.rowCount > 0;
+}
+
+async function updateUserRole(userId, role) {
+  const res = await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, parseInt(userId, 10)]);
+  return res.rowCount > 0;
+}
+
+async function regenerateUserApiKey(userId) {
+  const newKey = crypto.randomBytes(24).toString('hex');
+  const res = await pool.query('UPDATE users SET api_key = $1 WHERE id = $2 RETURNING api_key', [newKey, parseInt(userId, 10)]);
+  return res.rows[0] ? res.rows[0].api_key : null;
+}
+
+async function getAllUsers() {
+  const { rows } = await pool.query('SELECT id, username, role, api_key, created_at FROM users ORDER BY id ASC');
+  return rows;
+}
+
+async function deleteUser(userId) {
+  const res = await pool.query('DELETE FROM users WHERE id = $1', [parseInt(userId, 10)]);
+  return res.rowCount > 0;
 }
 
 // ---------------- SETTINGS ----------------
-function getSetting(key) {
-  return Object.prototype.hasOwnProperty.call(data.settings, key) ? data.settings[key] : null;
+async function getSetting(key) {
+  const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1 LIMIT 1', [key]);
+  if (!rows[0]) return null;
+  return rows[0].value;
 }
-function setSetting(key, value) {
-  data.settings[key] = value;
-  persist();
+
+async function setSetting(key, value) {
+  await pool.query(
+    `INSERT INTO settings (key, value)
+     VALUES ($1, $2::jsonb)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [key, JSON.stringify(value)]
+  );
 }
 
 // ---------------- SCHEDULE ----------------
-function getFullSchedule() {
-  const days = {};
-  for (let d = 1; d <= 6; d++) {
-    days[d] = {
-      items: data.scheduleDay[String(d)] || []
-    };
+async function getFullSchedule() {
+  const days = { 1: { items: [] }, 2: { items: [] }, 3: { items: [] }, 4: { items: [] }, 5: { items: [] }, 6: { items: [] } };
+  const { rows: items } = await pool.query(
+    'SELECT * FROM schedule_items ORDER BY day_of_week ASC, hour ASC, minute ASC'
+  );
+
+  for (const it of items) {
+    const d = it.day_of_week;
+    if (days[d]) {
+      days[d].items.push({
+        id: it.id,
+        hour: it.hour,
+        minute: it.minute,
+        duration_sec: it.duration_sec,
+        label: it.label || '',
+        ring_pattern: it.ring_pattern || 'continuous',
+        pulse_count: it.pulse_count || 3,
+        pulse_gap_sec: it.pulse_gap_sec || 1
+      });
+    }
   }
+
+  const { rows: holidays } = await pool.query(
+    "SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date FROM holidays ORDER BY date ASC"
+  );
+
   return {
     days,
-    holidays: (data.holidays || []).map(h => h.date) // ESP32 uchun faqat sanalar ro'yxati
+    holidays: holidays.map(h => h.date)
   };
+}
+
+async function setDaySchedule(day, items) {
+  const dayNum = parseInt(day, 10);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM schedule_items WHERE day_of_week = $1', [dayNum]);
+
+    for (const it of items) {
+      const pattern = it.ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
+      const hour = Math.min(23, Math.max(0, parseInt(it.hour) || 0));
+      const minute = Math.min(59, Math.max(0, parseInt(it.minute) || 0));
+      const duration = Math.min(60, Math.max(1, parseInt(it.duration_sec) || 5));
+      const label = (it.label || '').trim();
+      const pulseCount = Math.min(10, Math.max(2, parseInt(it.pulse_count) || 3));
+      const pulseGap = Math.min(10, Math.max(1, parseInt(it.pulse_gap_sec) || 1));
+
+      await client.query(
+        `INSERT INTO schedule_items (day_of_week, hour, minute, duration_sec, label, ring_pattern, pulse_count, pulse_gap_sec)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [dayNum, hour, minute, duration, label, pattern, pulseCount, pulseGap]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ---------------- HOLIDAYS ----------------
-function getHolidays() {
-  return (data.holidays || []).sort((a, b) => a.date.localeCompare(b.date));
+async function getHolidays() {
+  const { rows } = await pool.query(
+    "SELECT id, TO_CHAR(date, 'YYYY-MM-DD') AS date, name, created_at FROM holidays ORDER BY date ASC"
+  );
+  return rows;
 }
 
-function addHoliday(date, name) {
+async function addHoliday(date, name) {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('INVALID_DATE');
-  // Agar shu sanada allaqachon mavjud bo'lsa yangilaymiz
-  const existing = (data.holidays || []).find(h => h.date === date);
-  if (existing) {
-    existing.name = (name || '').trim();
-    persist();
-    return existing;
-  }
-  const item = {
-    id: data.nextId.holiday++,
-    date,
-    name: (name || '').trim(),
-    created_at: new Date().toISOString()
-  };
-  if (!data.holidays) data.holidays = [];
-  data.holidays.push(item);
-  persist();
-  return item;
+  const cleanName = (name || '').trim();
+  const { rows } = await pool.query(
+    `INSERT INTO holidays (date, name)
+     VALUES ($1::date, $2)
+     ON CONFLICT (date) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id, TO_CHAR(date, 'YYYY-MM-DD') AS date, name, created_at`,
+    [date, cleanName]
+  );
+  return rows[0];
 }
 
-function removeHoliday(id) {
-  const numId = parseInt(id, 10);
-  if (!data.holidays) return false;
-  const beforeLen = data.holidays.length;
-  data.holidays = data.holidays.filter(h => h.id !== numId);
-  if (data.holidays.length !== beforeLen) {
-    persist();
-    return true;
-  }
-  return false;
-}
-
-// Har bir qo'ng'iroq vaqti endi o'zining chalish uslubiga ega bo'ladi
-// (ring_pattern: 'continuous' | 'pulsed'), shunda masalan "dars boshlanishi"
-// va "favqulodda signal" turlicha eshitiladi.
-function normalizeItem(it, idGen) {
-  const pattern = it.ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
-  return {
-    id: idGen(),
-    hour: Math.min(23, Math.max(0, parseInt(it.hour) || 0)),
-    minute: Math.min(59, Math.max(0, parseInt(it.minute) || 0)),
-    duration_sec: Math.min(60, Math.max(1, parseInt(it.duration_sec) || 5)),
-    label: (it.label || '').trim(),
-    ring_pattern: pattern,
-    pulse_count: Math.min(10, Math.max(2, parseInt(it.pulse_count) || 3)),
-    pulse_gap_sec: Math.min(10, Math.max(1, parseInt(it.pulse_gap_sec) || 1))
-  };
-}
-
-function setDaySchedule(day, items) {
-  data.scheduleDay[String(day)] = items.map(it => normalizeItem(it, () => data.nextId.dayItem++));
-  persist();
+async function removeHoliday(id) {
+  const res = await pool.query('DELETE FROM holidays WHERE id = $1', [parseInt(id, 10)]);
+  return res.rowCount > 0;
 }
 
 // ---------------- AUDIT LOG ----------------
-function addAuditLog(username, action, detail) {
-  data.auditLog.unshift({
-    id: data.nextId.log++,
-    username: username || null,
-    action,
-    detail: detail || '',
-    created_at: new Date().toISOString()
-  });
-  if (data.auditLog.length > 500) data.auditLog.length = 500; // haddan tashqari o'smasin
-  persist();
-}
-function getAuditLog(limit = 100) {
-  return data.auditLog.slice(0, limit);
+async function addAuditLog(username, action, detail = '') {
+  await pool.query(
+    'INSERT INTO audit_logs (username, action, detail) VALUES ($1, $2, $3)',
+    [username || null, action, detail]
+  );
 }
 
-function setPendingCommand(cmd) {
-  data.settings.pending_command = cmd;
-  persist();
+async function getAuditLog(limit = 100) {
+  const { rows } = await pool.query(
+    'SELECT id, username, action, detail, created_at FROM audit_logs ORDER BY id DESC LIMIT $1',
+    [parseInt(limit, 10) || 100]
+  );
+  return rows;
 }
 
-function popPendingCommand() {
-  if (!data.settings.pending_command) return null;
-  const cmd = data.settings.pending_command;
-  delete data.settings.pending_command;
-  persist();
-  return cmd;
+// ---------------- PENDING COMMANDS ----------------
+async function setPendingCommand(cmd) {
+  await pool.query('INSERT INTO pending_commands (command) VALUES ($1::jsonb)', [JSON.stringify(cmd)]);
+}
+
+async function popPendingCommand() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT id, command, created_at FROM pending_commands ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED'
+    );
+    if (!rows[0]) {
+      await client.query('COMMIT');
+      return null;
+    }
+    const item = rows[0];
+    await client.query('DELETE FROM pending_commands WHERE id = $1', [item.id]);
+    await client.query('COMMIT');
+    return item.command;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    return null;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {
-  findUserByUsername, findUserById, findUserByApiKey, createUser, updateUserPassword,
-  regenerateUserApiKey, getAllUsers, deleteUser,
+  pool, initDb,
+  findUserByUsername, findUserById, findUserByApiKey,
+  createUser, updateUserPassword, updateUserRole, regenerateUserApiKey,
+  getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,

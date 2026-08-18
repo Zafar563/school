@@ -17,7 +17,7 @@ jobs:
       - name: Checkout kodni olish
         uses: actions/checkout@v4
 
-      - name: Docker Hub ga login
+      - name: GitHub Container Registry ga login
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -31,36 +31,43 @@ jobs:
           push: true
           tags: ghcr.io/zafar563/school:latest
 
-      - name: VPS ga deploy qilish
+      - name: docker-compose.yml faylini VPS ga yuklash
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "/opt/maktab"
+
+      - name: VPS da PostgreSQL va App konteynerlarini yangilash
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            # Docker o'rnatilganligini tekshirish
-            docker --version
+            mkdir -p /opt/maktab
+            cd /opt/maktab
 
-            # Papka yaratish (birinchi marta)
-            mkdir -p /opt/maktab/data
-
-            # .env faylini yangilash
+            # .env faylini saqlash
             echo "${{ secrets.VPS_ENV }}" > /opt/maktab/.env
 
-            # Yangi image ni tortib olish
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull ghcr.io/zafar563/school:latest
+            # GHCR dan yangi imijni olish uchun login
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Eski konteynerni to'xtatish va yangi ishga tushirish
-            docker stop maktab-qongirogi || true
-            docker rm maktab-qongirogi || true
+            # Docker Compose buyrug'ini aniqlash (v2 yoki v1)
+            if docker compose version >/dev/null 2>&1; then
+              DC="docker compose"
+            else
+              DC="docker-compose"
+            fi
 
-            docker run -d \
-              --name maktab-qongirogi \
-              --restart always \
-              -p 3000:3000 \
-              -v /opt/maktab/data:/app/data \
-              --env-file /opt/maktab/.env \
-              ghcr.io/zafar563/school:latest
+            echo "📦 Docker Compose orqali yangilanmoqda ($DC)..."
+            $DC -f /opt/maktab/docker-compose.yml pull app || true
+            $DC -f /opt/maktab/docker-compose.yml up -d --remove-orphans
 
-            echo "✅ Deploy muvaffaqiyatli!"
+            # Eski keraksiz imijlarni tozalash
+            docker image prune -f || true
+
+            echo "✅ PostgreSQL va Maktab Qo'ng'irog'i muvaffaqiyatli ishga tushdi!"
