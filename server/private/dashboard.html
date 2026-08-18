@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Boshqaruv paneli</title>
 <link rel="stylesheet" href="/css/style.css">
+<script>
+  (function() {
+    const saved = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', saved);
+  })();
+</script>
 </head>
 <body>
 <div class="app">
@@ -25,7 +31,7 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
         Bayramlar
       </a>
-      <a data-tab="device" class="admin-only">
+      <a data-tab="device">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
         Qurilma
         <span class="device-dot" id="deviceDot" title="Holat noma'lum"></span>
@@ -57,6 +63,22 @@
         <h1 id="pageTitle">Qo'ng'iroq jadvali</h1>
       </div>
       <div class="header-right">
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Tungi / Kunduzgi rejim" type="button">
+          <svg id="themeIconSun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg id="themeIconMoon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
         <button class="mute-switch" id="muteSwitch">
           <span class="mute-dot"></span>
           <span id="muteLabel">Qo'ng'iroq yoqilgan</span>
@@ -208,7 +230,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card user-only">
         <h2>Masofadan qo'lda chalish & Favqulodda signal</h2>
         <p class="hint">ESP32 qurilmasiga to'g'ridan-to'g'ri darhol chalish yoki favqulodda signal buyrug'ini yuboring.</p>
         
@@ -228,17 +250,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2>Ulanish kaliti (API Key)</h2>
-        <p class="hint">Bu kalitni Arduino dasturiga kiritasiz. Hech kimga ko'rsatmang.</p>
-        <div class="key-box-row">
-          <div class="key-box" id="apiKeyBox">yuklanmoqda...</div>
-          <button class="btn btn-ghost" id="copyKeyBtn">Nusxalash</button>
-        </div>
-        <div class="btn-row" style="margin-top:16px; padding-top:16px; border-top: 1px solid var(--border);">
-          <button class="btn btn-ghost" id="regenKeyBtn">Kalitni yangilash</button>
-        </div>
-      </div>
     </div>
 
     <!-- ACCOUNT TAB -->
@@ -324,7 +335,7 @@
       <div class="card admin-only">
         <h2>Mavjud foydalanuvchilar</h2>
         <table class="log-table" id="usersTable">
-          <thead><tr><th>ID</th><th>Login</th><th>Rol</th><th>Yaratilgan sana</th><th style="width:140px; text-align:right;">Amal</th></tr></thead>
+          <thead><tr><th>ID</th><th>Login</th><th>Rol</th><th>ESP32 API Kalit</th><th>Yaratilgan sana</th><th style="width:160px; text-align:right;">Amal</th></tr></thead>
           <tbody id="usersList"></tbody>
         </table>
       </div>

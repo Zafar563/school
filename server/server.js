@@ -5,8 +5,8 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
 const {
-  findUserByUsername, findUserById, createUser, updateUserPassword,
-  getAllUsers, deleteUser,
+  findUserByUsername, findUserById, findUserByApiKey, createUser, updateUserPassword,
+  regenerateUserApiKey, getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
@@ -118,7 +118,13 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.userId) {
-    return res.json({ loggedIn: true, username: req.session.username, role: req.session.role || 'admin' });
+    const user = findUserById(req.session.userId);
+    return res.json({
+      loggedIn: true,
+      username: req.session.username,
+      role: req.session.role || 'admin',
+      apiKey: (user && user.api_key) || ''
+    });
   }
   res.json({ loggedIn: false });
 });
@@ -204,7 +210,7 @@ app.post('/api/admin/device-key/regenerate', requireAdmin, (req, res) => {
   res.json({ apiKey: newKey });
 });
 
-app.get('/api/admin/device-status', requireAdmin, (req, res) => {
+app.get('/api/admin/device-status', requireLogin, (req, res) => {
   const lastSeen = getSetting('device_last_seen');
   const online = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
   res.json({
@@ -324,6 +330,15 @@ app.post('/api/admin/users/:id/password', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/admin/users/:id/regenerate-key', requireAdmin, (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const newKey = regenerateUserApiKey(targetId);
+  if (!newKey) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+  const user = findUserById(targetId);
+  addAuditLog(req.session.username, 'regenerate_user_key', `ID: ${targetId} (${user ? user.username : '—'})`);
+  res.json({ ok: true, apiKey: newKey });
+});
+
 app.get('/api/admin/audit-log', requireAdmin, (req, res) => {
   res.json(getAuditLog(100));
 });
@@ -333,9 +348,11 @@ app.get('/api/admin/audit-log', requireAdmin, (req, res) => {
 function requireDeviceKey(req, res, next) {
   const key = req.header('X-API-KEY');
   const validKey = getSetting('device_api_key');
-  if (!key || key !== validKey) {
+  const userWithKey = findUserByApiKey(key);
+  if (!key || (key !== validKey && !userWithKey)) {
     return res.status(401).json({ error: 'API kalit noto\'g\'ri' });
   }
+  req.deviceUser = userWithKey || null;
   next();
 }
 
@@ -345,7 +362,8 @@ app.get('/api/device/schedule', requireDeviceKey, (req, res) => {
   setSetting('device_last_seen', new Date().toISOString());
   setSetting('device_last_ip', req.ip);
   if (wasOffline) {
-    addAuditLog(null, 'device_connected', `IP: ${req.ip}`);
+    const userTag = req.deviceUser ? ` (${req.deviceUser.username})` : '';
+    addAuditLog(null, 'device_connected', `IP: ${req.ip}${userTag}`);
   }
 
   const payload = getFullSchedule();

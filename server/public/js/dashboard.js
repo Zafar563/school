@@ -8,6 +8,35 @@ let currentRole = 'admin';
 const isAdmin = () => currentRole === 'admin';
 
 // ============================================================
+// THEME (TUNGI / KUNDUZGI REJIM)
+// ============================================================
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeIconSun = document.getElementById('themeIconSun');
+const themeIconMoon = document.getElementById('themeIconMoon');
+
+function updateDashboardThemeIcons(theme) {
+  if (theme === 'dark') {
+    if (themeIconSun) themeIconSun.style.display = 'block';
+    if (themeIconMoon) themeIconMoon.style.display = 'none';
+  } else {
+    if (themeIconSun) themeIconSun.style.display = 'none';
+    if (themeIconMoon) themeIconMoon.style.display = 'block';
+  }
+}
+
+updateDashboardThemeIcons(document.documentElement.getAttribute('data-theme') || 'light');
+
+if (themeToggleBtn) {
+  themeToggleBtn.onclick = () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    updateDashboardThemeIcons(next);
+  };
+}
+
+// ============================================================
 // BRANDING (maktab nomi)
 // ============================================================
 let currentSchoolName = 'Maktab';
@@ -43,6 +72,8 @@ if (saveSchoolNameBtn) {
   };
 }
 
+let currentUserApiKey = '';
+
 // ============================================================
 // AUTH
 // ============================================================
@@ -50,12 +81,14 @@ fetch('/api/me').then(r => r.json()).then(d => {
   if (!d.loggedIn) { window.location.href = '/login.html'; return; }
   document.getElementById('userLabel').textContent = d.username;
   currentRole = d.role || 'user';
+  currentUserApiKey = d.apiKey || '';
   document.getElementById('userRoleLabel').textContent = isAdmin() ? 'Administrator' : 'Foydalanuvchi';
   if (!isAdmin()) {
     document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
   } else {
-    startDevicePolling();
+    document.querySelectorAll('.user-only').forEach(el => el.style.display = 'none');
   }
+  startDevicePolling();
   loadSchedule();
   loadMuteState();
 });
@@ -445,38 +478,12 @@ function pollDeviceStatus() {
 }
 
 function loadDevice() {
-  fetch('/api/admin/device-key').then(r => r.json()).then(d => {
-    const box = document.getElementById('apiKeyBox');
-    if (box) box.textContent = d.apiKey;
-  });
   pollDeviceStatus();
 }
 
 function startDevicePolling() {
   pollDeviceStatus();
   setInterval(pollDeviceStatus, 8000);
-}
-
-const copyBtn = document.getElementById('copyKeyBtn');
-if (copyBtn) {
-  copyBtn.onclick = () => {
-    const text = (document.getElementById('apiKeyBox') || {}).textContent || '';
-    navigator.clipboard.writeText(text)
-      .then(() => toast('Kalit nusxalandi'))
-      .catch(() => toast('Nusxalab bo\'lmadi', 'error'));
-  };
-}
-
-const regenBtn = document.getElementById('regenKeyBtn');
-if (regenBtn) {
-  regenBtn.onclick = () => {
-    if (!confirm('Eski kalit ishdan chiqadi. ESP32 firmware-ga yangi kalitni kiritish kerak bo\'ladi. Davom etasizmi?')) return;
-    fetch('/api/admin/device-key/regenerate', { method: 'POST' }).then(r => r.json()).then(d => {
-      const box = document.getElementById('apiKeyBox');
-      if (box) box.textContent = d.apiKey;
-      toast('Yangi kalit yaratildi');
-    });
-  };
 }
 
 // ============================================================
@@ -690,6 +697,17 @@ function loadUsers() {
           ${u.role === 'admin' ? '👑 Admin' : '👤 User'}
         </span>
       </td>
+      <td>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <code class="mono" style="background:rgba(0,0,0,0.06); padding:3px 7px; border-radius:4px; font-size:11px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block;" title="${u.api_key || ''}">${u.api_key || '—'}</code>
+          <button class="btn btn-ghost btn-sm" onclick="copyUserApiKey('${u.api_key || ''}')" title="Kalitdan nusxa olish" style="padding:2px 6px; font-size:11px; line-height:1.2;">
+            📋 Nusxa
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="regenerateUserKey(${u.id}, '${u.username}')" title="Yangi kalit yaratish" style="padding:2px 6px; font-size:11px; line-height:1.2;">
+            🔄
+          </button>
+        </div>
+      </td>
       <td class="mono">${new Date(u.created_at).toLocaleDateString('uz-UZ')}</td>
       <td style="text-align:right;">
         <button class="btn btn-ghost btn-sm" onclick="resetUserPassword(${u.id}, '${u.username}')" style="padding:4px 8px; margin-right:4px;">
@@ -699,9 +717,30 @@ function loadUsers() {
           O'chirish
         </button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
   }).catch(() => toast('Foydalanuvchilarni yuklashda xato', 'error'));
 }
+
+window.copyUserApiKey = function(key) {
+  if (!key) { toast('Kalit mavjud emas', 'error'); return; }
+  navigator.clipboard.writeText(key)
+    .then(() => toast('ESP32 API kalit nusxalandi ✓'))
+    .catch(() => toast('Nusxalab bo\'lmadi', 'error'));
+};
+
+window.regenerateUserKey = function(id, username) {
+  if (!confirm(`"${username}" uchun yangi ESP32 API kalit generatsiya qilinsinmi? (Eski kalit bekor qilinadi)`)) return;
+  fetch(`/api/admin/users/${id}/regenerate-key`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        toast(`"${username}" uchun yangi API kalit yaratildi ✓`);
+        loadUsers();
+      } else {
+        toast(d.error || 'Xatolik', 'error');
+      }
+    }).catch(() => toast('Server xatosi', 'error'));
+};
 
 window.deleteUserAccount = function(id, username) {
   if (!confirm(`"${username}" hisobini o'chirishni tasdiqlaysizmi?`)) return;

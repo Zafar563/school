@@ -35,6 +35,14 @@ function load() {
     }
     if (!data.holidays) data.holidays = [];
     if (!data.nextId.holiday) data.nextId.holiday = 1;
+    let usersUpdated = false;
+    (data.users || []).forEach(u => {
+      if (!u.api_key) {
+        u.api_key = crypto.randomBytes(24).toString('hex');
+        usersUpdated = true;
+      }
+    });
+    if (usersUpdated) persist();
   }
 }
 
@@ -55,9 +63,21 @@ function findUserByUsername(username) {
 function findUserById(id) {
   return data.users.find(u => u.id === id) || null;
 }
-function createUser(username, passwordHash, role = 'admin') {
+function findUserByApiKey(apiKey) {
+  if (!apiKey) return null;
+  return data.users.find(u => u.api_key === apiKey) || null;
+}
+function createUser(username, passwordHash, role = 'admin', apiKey = null) {
   if (findUserByUsername(username)) throw new Error('UNIQUE');
-  const user = { id: data.nextId.user++, username, password_hash: passwordHash, role, created_at: new Date().toISOString() };
+  const key = apiKey || crypto.randomBytes(24).toString('hex');
+  const user = {
+    id: data.nextId.user++,
+    username,
+    password_hash: passwordHash,
+    role,
+    api_key: key,
+    created_at: new Date().toISOString()
+  };
   data.users.push(user);
   persist();
   return user;
@@ -69,11 +89,19 @@ function updateUserPassword(userId, passwordHash) {
   persist();
   return true;
 }
+function regenerateUserApiKey(userId) {
+  const user = findUserById(parseInt(userId, 10));
+  if (!user) return null;
+  user.api_key = crypto.randomBytes(24).toString('hex');
+  persist();
+  return user.api_key;
+}
 function getAllUsers() {
   return data.users.map(u => ({
     id: u.id,
     username: u.username,
     role: u.role || 'user',
+    api_key: u.api_key || '',
     created_at: u.created_at
   }));
 }
@@ -201,8 +229,8 @@ function popPendingCommand() {
 }
 
 module.exports = {
-  findUserByUsername, findUserById, createUser, updateUserPassword,
-  getAllUsers, deleteUser,
+  findUserByUsername, findUserById, findUserByApiKey, createUser, updateUserPassword,
+  regenerateUserApiKey, getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
