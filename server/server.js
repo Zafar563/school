@@ -18,8 +18,8 @@ const { initTelegramBot } = require('./telegram');
 
 // Server birinchi marta ishga tushganda standart adminni avtomatik yaratish
 async function ensureDefaultAdmin() {
-  const defaultUser = 'maksim.gorkiy';
-  const defaultPass = '1sonmaktab';
+  const defaultUser = 'admin';
+  const defaultPass = 'admin123';
   const existing = await findUserByUsername(defaultUser);
   if (!existing) {
     const hash = bcrypt.hashSync(defaultPass, 12);
@@ -30,6 +30,15 @@ async function ensureDefaultAdmin() {
       // allqachon mavjud bo'lsa e'tibor berilmaydi
     }
   }
+
+  // Eskisidan qolgan "maksim.gorkiy" hisobini tozalash
+  try {
+    const oldUser = await findUserByUsername('maksim.gorkiy');
+    if (oldUser) {
+      await deleteUser(oldUser.id);
+      console.log('🧹 Eski "maksim.gorkiy" hisobi o\'chirildi.');
+    }
+  } catch (e) {}
 }
 
 const app = express();
