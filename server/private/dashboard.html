@@ -354,24 +354,34 @@
       <div class="card admin-only">
         <h2>Yangi foydalanuvchi qo'shish</h2>
         <p class="hint">Tizimga kirishi mumkin bo'lgan Admin yoki Oddiy foydalanuvchi hisobini yarating.</p>
-        <div class="form-fields" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
-          <div class="field-group" style="flex:1; min-width:160px;">
-            <label>Login</label>
-            <input type="text" id="newUsernameInput" placeholder="Masalan: navbatchi">
+        
+        <div class="user-form-grid">
+          <div class="field-group">
+            <label>Login (foydalanuvchi nomi)</label>
+            <input type="text" id="newUsernameInput" placeholder="Masalan: navbatchi" autocomplete="off">
           </div>
-          <div class="field-group" style="flex:1; min-width:160px;">
-            <label>Parol (min 6 ta)</label>
-            <input type="password" id="newUserPasswordInput" placeholder="Parolni kiriting">
+          <div class="field-group">
+            <label>Parol (kamida 6 ta belgi)</label>
+            <input type="password" id="newUserPasswordInput" placeholder="Parolni kiriting" autocomplete="new-password">
           </div>
-          <div class="field-group" style="flex:1; min-width:140px;">
-            <label>Rol</label>
-            <select id="newUserRoleSelect" style="width:100%; height:38px; border-radius:6px; border:1px solid var(--border); padding:0 8px; background:var(--bg-card); color:var(--text);">
-              <option value="user">Foydalanuvchi (User)</option>
-              <option value="admin">Administrator (Admin)</option>
+          <div class="field-group">
+            <label>Tizimdagi roli</label>
+            <select id="newUserRoleSelect">
+              <option value="user">👤 Oddiy foydalanuvchi (User)</option>
+              <option value="admin">🛡️ Administrator (Admin)</option>
             </select>
           </div>
-          <button class="btn btn-primary" id="createUserBtn" style="margin-bottom:2px;">
-            Qo'shish
+        </div>
+
+        <div class="btn-row" style="margin-top:16px; padding-top:16px; justify-content:flex-start;">
+          <button class="btn btn-primary" id="createUserBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+            Foydalanuvchini qo'shish
           </button>
         </div>
       </div>
