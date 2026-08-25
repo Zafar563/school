@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -263,6 +265,7 @@ app.post('/api/admin/schedule/day', requireLogin, async (req, res) => {
     const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
     await setDaySchedule(targetUserId, day, items || []);
     await addAuditLog(req.session.username, 'update_day_schedule', `kun=${day} user_id=${targetUserId}`);
+    notifyDeviceScheduleUpdate(targetUserId);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Jadvalni saqlashda xato' });
@@ -326,6 +329,7 @@ app.post('/api/admin/holidays', requireLogin, async (req, res) => {
     const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
     const item = await addHoliday(targetUserId, date, name);
     await addAuditLog(req.session.username, 'add_holiday', `${date}: ${name || 'Bayram'} (user=${targetUserId})`);
+    notifyDeviceScheduleUpdate(targetUserId);
     res.json({ ok: true, item });
   } catch (e) {
     res.status(400).json({ error: 'Sana formati noto\'g\'ri yoki xato' });
@@ -338,6 +342,7 @@ app.delete('/api/admin/holidays/:id', requireLogin, async (req, res) => {
     const ok = await removeHoliday(targetUserId, req.params.id);
     if (!ok) return res.status(404).json({ error: 'Topilmadi' });
     await addAuditLog(req.session.username, 'remove_holiday', `ID: ${req.params.id}`);
+    notifyDeviceScheduleUpdate(targetUserId);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'O\'chirishda xatolik' });
@@ -481,26 +486,30 @@ app.post('/api/admin/mute', requireLogin, async (req, res) => {
     const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
     await setUserMuteState(targetUserId, !!muted);
     await addAuditLog(req.session.username, muted ? 'bell_muted' : 'bell_unmuted', `user=${targetUserId}`);
+    notifyDeviceScheduleUpdate(targetUserId);
     res.json({ ok: true, muted: !!muted });
   } catch (e) {
     res.status(500).json({ error: 'Xatolik' });
   }
 });
 
-// Favqulodda yoki Sinov tariqasida qo'lda darhol chalish (Multi-tenant)
+// Favqulodda yoki Sinov tariqasida qo'lda darhol chalish (Multi-tenant + Real-time WebSocket)
 app.post('/api/admin/trigger-bell', requireLogin, async (req, res) => {
   const { action, duration_sec, ring_pattern, pulse_count, pulse_gap_sec, userId } = req.body || {};
   try {
     const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
     if (action === 'stop') {
-      await setPendingCommand(targetUserId, { action: 'stop' });
-      await addAuditLog(req.session.username, 'manual_stop', `Qo'ng'iroq to'xtatildi (user=${targetUserId})`);
-      return res.json({ ok: true, message: 'To\'xtatish buyrug\'i yuborildi' });
+      const cmd = { type: 'command', action: 'stop', created_at: Date.now() };
+      const instant = sendToDeviceSocket(targetUserId, cmd);
+      await setPendingCommand(targetUserId, cmd);
+      await addAuditLog(req.session.username, 'manual_stop', `Qo'ng'iroq to'xtatildi (user=${targetUserId}, ws=${instant ? 'jonli' : 'navbat'})`);
+      return res.json({ ok: true, instant, message: instant ? '🛑 Qo\'ng\'iroq darhol to\'xtatildi (Real-Time)' : 'To\'xtatish buyrug\'i yuborildi' });
     }
 
     const duration = Math.min(60, Math.max(1, parseInt(duration_sec, 10) || 5));
     const pattern = ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
     const command = {
+      type: 'command',
       action: 'ring',
       duration_sec: duration,
       ring_pattern: pattern,
@@ -509,9 +518,17 @@ app.post('/api/admin/trigger-bell', requireLogin, async (req, res) => {
       created_at: Date.now()
     };
 
+    const instant = sendToDeviceSocket(targetUserId, command);
     await setPendingCommand(targetUserId, command);
-    await addAuditLog(req.session.username, 'manual_ring', `${pattern === 'pulsed' ? 'Uzib-uzib' : 'Uzluksiz'} ${duration}s (user=${targetUserId})`);
-    res.json({ ok: true, message: 'Qo\'ng\'iroq buyrug\'i navbatga qo\'yildi' });
+    await addAuditLog(req.session.username, 'manual_ring', `${pattern === 'pulsed' ? 'Uzib-uzib' : 'Uzluksiz'} ${duration}s (user=${targetUserId}, ws=${instant ? 'jonli' : 'navbat'})`);
+    
+    res.json({
+      ok: true,
+      instant,
+      message: instant
+        ? `🔔 ${duration} soniyalik signal darhol chalindi (Real-Time 0.05s)!`
+        : 'Qo\'ng\'iroq buyrug\'i navbatga qo\'yildi (ESP32 keyingi so\'rovida chaladi)'
+    });
   } catch (e) {
     res.status(500).json({ error: 'Buyruqni yuborishda xato' });
   }
@@ -726,12 +743,124 @@ app.get('/api/device/schedule', requireDeviceKey, async (req, res) => {
   }
 });
 
-// ---------- SAHIFALAR ----------
-app.get('/', (req, res) => {
-  if (req.session && req.session.userId) {
-    return res.redirect('/dashboard.html');
+// ---------- WEBSOCKET SERVER (REAL-TIME 0-DELAY PUSH TO ESP32) ----------
+const server = http.createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+const activeDeviceSockets = new Map(); // userId -> Set<WebSocket>
+
+function sendToDeviceSocket(userId, data) {
+  const uid = parseInt(userId, 10);
+  const wsSet = activeDeviceSockets.get(uid);
+  if (!wsSet || wsSet.size === 0) return false;
+  const msg = JSON.stringify(data);
+  let sent = false;
+  for (const ws of wsSet) {
+    if (ws.readyState === 1 /* OPEN */) {
+      try {
+        ws.send(msg);
+        sent = true;
+      } catch (e) {}
+    }
   }
-  res.redirect('/login.html');
+  return sent;
+}
+
+async function notifyDeviceScheduleUpdate(userId) {
+  try {
+    const uid = parseInt(userId, 10);
+    const user = await findUserById(uid);
+    if (!user) return;
+    const sch = await getFullSchedule(uid);
+    sch.muted = user.bell_muted === true;
+    sendToDeviceSocket(uid, {
+      type: 'schedule_updated',
+      schedule: sch,
+      updated_at: Date.now()
+    });
+  } catch (e) {}
+}
+
+server.on('upgrade', async (request, socket, head) => {
+  try {
+    const parsedUrl = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+    const pathname = parsedUrl.pathname;
+
+    if (pathname === '/ws/device' || pathname === '/ws') {
+      const apiKey = parsedUrl.searchParams.get('key') || request.headers['x-api-key'];
+      if (!apiKey) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      const user = await findUserByApiKey(apiKey);
+      if (!user) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        ws.deviceUser = user;
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  } catch (err) {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', async (ws, req) => {
+  const user = ws.deviceUser;
+  const userId = user.id;
+
+  if (!activeDeviceSockets.has(userId)) {
+    activeDeviceSockets.set(userId, new Set());
+  }
+  activeDeviceSockets.get(userId).add(ws);
+
+  const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const clientIp = (rawIp ? rawIp.split(',')[0].trim() : '127.0.0.1').replace(/^::ffff:/, '');
+
+  console.log(`🔌 [WebSocket] ESP32 ulandi: "${user.school_name || user.username}" (IP: ${clientIp})`);
+
+  resolveIpGeo(clientIp).then(async (geo) => {
+    await updateUserDeviceStatus(userId, clientIp, geo);
+  }).catch(async () => {
+    await updateUserDeviceStatus(userId, clientIp, null);
+  });
+
+  // Boshlang'ich jadvalni yuborish
+  try {
+    const fullSchedule = await getFullSchedule(userId);
+    fullSchedule.muted = user.bell_muted === true;
+    ws.send(JSON.stringify({
+      type: 'init',
+      message: 'WebSocket orqali real-time aloqa o\'rnatildi',
+      schoolName: user.school_name || user.username,
+      schedule: fullSchedule
+    }));
+  } catch (e) {}
+
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', time: Date.now() }));
+      }
+    } catch (e) {}
+  });
+
+  ws.on('close', () => {
+    const set = activeDeviceSockets.get(userId);
+    if (set) {
+      set.delete(ws);
+      if (set.size === 0) activeDeviceSockets.delete(userId);
+    }
+    console.log(`🔌 [WebSocket] ESP32 aloqasi uzildi: "${user.school_name || user.username}"`);
+  });
 });
 
 // Bazasini ishga tushirish va serverni ochish
@@ -743,8 +872,8 @@ async function startServer() {
     console.error('⚠️ Baza ulanishida yoki migratsiyada xato:', err.message);
   }
 
-  app.listen(PORT, () => {
-    console.log(`Server ishga tushdi: http://localhost:${PORT}`);
+  server.listen(PORT, () => {
+    console.log(`Server ishga tushdi (HTTP + WebSocket): http://localhost:${PORT}`);
     initTelegramBot();
   });
 }
