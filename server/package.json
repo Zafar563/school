@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "migrate": "node migrate.js",
-    "create-admin": "node create-admin.js"
+    "create-admin": "node create-admin.js",
+    "reset-db": "node reset-db.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
