@@ -7,12 +7,15 @@ const path = require('path');
 const {
   pool,
   initDb,
-  findUserByUsername, findUserById, findUserByApiKey, createUser, updateUserPassword,
-  regenerateUserApiKey, getAllUsers, deleteUser,
+  findUserByUsername, findUserById, findUserByApiKey,
+  createUser, updateUserPassword, updateUserRole, updateUserSchoolName, regenerateUserApiKey,
+  getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
   setPendingCommand, popPendingCommand,
+  updateUserDeviceStatus, updateUserCustomCoords,
+  getUserMuteState, setUserMuteState, getAllDevicesStatus,
   addAuditLog, getAuditLog
 } = require('./db');
 const { initTelegramBot } = require('./telegram');
@@ -26,7 +29,7 @@ async function ensureDefaultAdmin() {
   if (!existing) {
     const hash = bcrypt.hashSync(defaultPass, 12);
     try {
-      await createUser(defaultUser, hash, 'admin');
+      await createUser(defaultUser, hash, 'admin', null, 'Bosh Boshqaruv');
       console.log(`✅ Standart admin avtomatik yaratildi: ${defaultUser}`);
     } catch (e) {
       // allqachon mavjud bo'lsa e'tibor berilmaydi
@@ -44,7 +47,7 @@ async function ensureDefaultAdmin() {
 }
 
 const app = express();
-app.set('trust proxy', 1); // Render/Railway/VPS kabi reverse-proxy ortida to'g'ri IP/HTTPS aniqlash uchun
+app.set('trust proxy', 1); // Reverse-proxy ortida to'g'ri IP/HTTPS aniqlash
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
@@ -85,8 +88,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-
-// ---------- LOGINGA TEGISHLI MIDDLEWARE ----------
+// ---------- MIDDLEWARES & HELPERS ----------
 function requireLogin(req, res, next) {
   if (req.session && req.session.userId) return next();
   return res.status(401).json({ error: 'Tizimga kirilmagan' });
@@ -97,9 +99,15 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Bu bo\'lim uchun ruxsatingiz yo\'q' });
 }
 
+function getTargetUserId(req) {
+  if (req.session.role === 'admin' && req.query.userId) {
+    return parseInt(req.query.userId, 10);
+  }
+  return req.session.userId;
+}
+
 // Oddiy brute-force cheklovi (xotirada)
 const loginAttempts = {};
-// Har 30 daqiqada eski IP urinishlarni tozalash (Memory leak oldini olish)
 setInterval(() => {
   const now = Date.now();
   for (const ip in loginAttempts) {
@@ -140,7 +148,7 @@ app.post('/api/login', rateLimitLogin, async (req, res) => {
       }
       req.session.userId = user.id;
       req.session.username = user.username;
-      req.session.role = user.role || 'admin';
+      req.session.role = user.role || 'user';
       await addAuditLog(username, 'login_success');
       res.json({ ok: true, username: user.username });
     });
@@ -169,7 +177,9 @@ app.get('/api/me', async (req, res) => {
       }
       return res.json({
         loggedIn: true,
+        userId: user.id,
         username: user.username,
+        schoolName: user.school_name || user.username,
         role: user.role || 'user',
         apiKey: user.api_key || ''
       });
@@ -182,6 +192,14 @@ app.get('/api/me', async (req, res) => {
 
 // Maktab nomi
 app.get('/api/branding', async (req, res) => {
+  if (req.session && req.session.userId) {
+    try {
+      const user = await findUserById(req.session.userId);
+      if (user && user.school_name) {
+        return res.json({ schoolName: user.school_name });
+      }
+    } catch (e) {}
+  }
   try {
     const name = await getSetting('school_name');
     res.json({ schoolName: name || 'Maktab' });
@@ -190,12 +208,15 @@ app.get('/api/branding', async (req, res) => {
   }
 });
 
-app.post('/api/admin/branding', requireAdmin, async (req, res) => {
+app.post('/api/admin/branding', requireLogin, async (req, res) => {
   const name = ((req.body && req.body.schoolName) || '').toString().trim();
   if (!name) return res.status(400).json({ error: 'Maktab nomini kiriting' });
   if (name.length > 60) return res.status(400).json({ error: 'Nom juda uzun (max 60 belgi)' });
   try {
-    await setSetting('school_name', name);
+    await updateUserSchoolName(req.session.userId, name);
+    if (req.session.role === 'admin') {
+      await setSetting('school_name', name);
+    }
     await addAuditLog(req.session.username, 'update_school_name', name);
     res.json({ ok: true, schoolName: name });
   } catch (e) {
@@ -222,10 +243,11 @@ app.post('/api/change-password', requireLogin, async (req, res) => {
   }
 });
 
-// ---------- ADMIN: JADVALNI BOSHQARISH ----------
+// ---------- JADVALNI BOSHQARISH (MULTI-TENANT) ----------
 app.get('/api/admin/schedule', requireLogin, async (req, res) => {
   try {
-    const sch = await getFullSchedule();
+    const targetUserId = getTargetUserId(req);
+    const sch = await getFullSchedule(targetUserId);
     res.json(sch);
   } catch (e) {
     res.status(500).json({ error: 'Jadvalni yuklashda xato' });
@@ -233,21 +255,23 @@ app.get('/api/admin/schedule', requireLogin, async (req, res) => {
 });
 
 app.post('/api/admin/schedule/day', requireLogin, async (req, res) => {
-  const { day, items } = req.body || {};
+  const { day, items, userId } = req.body || {};
   if (day === undefined || day < 1 || day > 6) return res.status(400).json({ error: 'Kun noto\'g\'ri' });
   try {
-    await setDaySchedule(day, items || []);
-    await addAuditLog(req.session.username, 'update_day_schedule', `kun=${day}`);
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    await setDaySchedule(targetUserId, day, items || []);
+    await addAuditLog(req.session.username, 'update_day_schedule', `kun=${day} user_id=${targetUserId}`);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Jadvalni saqlashda xato' });
   }
 });
 
-// ---------- BAYRAMLAR VA TA'TILLAR ----------
+// ---------- BAYRAMLAR VA TA'TILLAR (MULTI-TENANT) ----------
 app.get('/api/admin/holidays', requireLogin, async (req, res) => {
   try {
-    const h = await getHolidays();
+    const targetUserId = getTargetUserId(req);
+    const h = await getHolidays(targetUserId);
     res.json(h);
   } catch (e) {
     res.status(500).json({ error: 'Bayramlarni yuklashda xato' });
@@ -255,11 +279,12 @@ app.get('/api/admin/holidays', requireLogin, async (req, res) => {
 });
 
 app.post('/api/admin/holidays', requireLogin, async (req, res) => {
-  const { date, name } = req.body || {};
+  const { date, name, userId } = req.body || {};
   if (!date) return res.status(400).json({ error: 'Sana kiritilishi shart (YYYY-MM-DD)' });
   try {
-    const item = await addHoliday(date, name);
-    await addAuditLog(req.session.username, 'add_holiday', `${date}: ${name || 'Bayram'}`);
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    const item = await addHoliday(targetUserId, date, name);
+    await addAuditLog(req.session.username, 'add_holiday', `${date}: ${name || 'Bayram'} (user=${targetUserId})`);
     res.json({ ok: true, item });
   } catch (e) {
     res.status(400).json({ error: 'Sana formati noto\'g\'ri yoki xato' });
@@ -268,7 +293,8 @@ app.post('/api/admin/holidays', requireLogin, async (req, res) => {
 
 app.delete('/api/admin/holidays/:id', requireLogin, async (req, res) => {
   try {
-    const ok = await removeHoliday(req.params.id);
+    const targetUserId = getTargetUserId(req);
+    const ok = await removeHoliday(targetUserId, req.params.id);
     if (!ok) return res.status(404).json({ error: 'Topilmadi' });
     await addAuditLog(req.session.username, 'remove_holiday', `ID: ${req.params.id}`);
     res.json({ ok: true });
@@ -277,24 +303,13 @@ app.delete('/api/admin/holidays/:id', requireLogin, async (req, res) => {
   }
 });
 
-// API kalitini ko'rish
-app.get('/api/admin/device-key', requireAdmin, async (req, res) => {
+// API kalitini ko'rish (Admin / User o'z kalitini ko'radi)
+app.get('/api/admin/device-key', requireLogin, async (req, res) => {
   try {
-    const key = await getSetting('device_api_key');
-    res.json({ apiKey: key });
+    const user = await findUserById(req.session.userId);
+    res.json({ apiKey: user ? user.api_key : '' });
   } catch (e) {
     res.status(500).json({ error: 'Kalitni yuklashda xato' });
-  }
-});
-
-app.post('/api/admin/device-key/regenerate', requireAdmin, async (req, res) => {
-  try {
-    const newKey = crypto.randomBytes(24).toString('hex');
-    await setSetting('device_api_key', newKey);
-    await addAuditLog(req.session.username, 'regenerate_device_key');
-    res.json({ apiKey: newKey });
-  } catch (e) {
-    res.status(500).json({ error: 'Kalitni yangilashda xato' });
   }
 });
 
@@ -338,13 +353,23 @@ async function resolveIpGeo(ip) {
   return null;
 }
 
+// Qurilma holatini olish (Multi-tenant)
 app.get('/api/admin/device-status', requireLogin, async (req, res) => {
   try {
-    const lastSeen = await getSetting('device_last_seen');
+    if (req.session.role === 'admin' && req.query.all === 'true') {
+      const allDevices = await getAllDevicesStatus();
+      return res.json({ all: true, devices: allDevices });
+    }
+
+    const targetUserId = getTargetUserId(req);
+    const user = await findUserById(targetUserId);
+    if (!user) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+
+    const lastSeen = user.last_seen;
     const online = !!lastSeen && (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000;
-    const lastIp = await getSetting('device_last_ip');
-    const geo = await getSetting('device_geo');
-    const customCoords = await getSetting('device_custom_coords');
+    const lastIp = user.last_ip;
+    const geo = user.geo;
+    const customCoords = user.custom_coords;
 
     const defaultGeo = {
       ip: lastIp || '127.0.0.1',
@@ -358,6 +383,10 @@ app.get('/api/admin/device-status', requireLogin, async (req, res) => {
     };
 
     res.json({
+      userId: user.id,
+      username: user.username,
+      schoolName: user.school_name || user.username,
+      apiKey: user.api_key,
       lastSeen,
       lastIp,
       online,
@@ -370,12 +399,14 @@ app.get('/api/admin/device-status', requireLogin, async (req, res) => {
 });
 
 app.post('/api/admin/device-location', requireAdmin, async (req, res) => {
-  const { lat, lon, label } = req.body || {};
+  const { lat, lon, label, userId } = req.body || {};
   if (typeof lat !== 'number' || typeof lon !== 'number') {
     return res.status(400).json({ error: 'Koordinatalar noto\'g\'ri' });
   }
   try {
-    const geo = (await getSetting('device_geo')) || {};
+    const targetUserId = userId ? parseInt(userId, 10) : req.session.userId;
+    const user = await findUserById(targetUserId);
+    const geo = (user && user.geo) || {};
     const updated = {
       ...geo,
       lat,
@@ -384,18 +415,19 @@ app.post('/api/admin/device-location', requireAdmin, async (req, res) => {
       customLabel: (label || '').trim(),
       updated_at: new Date().toISOString()
     };
-    await setSetting('device_custom_coords', updated);
-    await addAuditLog(req.session.username, 'update_device_location', `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+    await updateUserCustomCoords(targetUserId, updated);
+    await addAuditLog(req.session.username, 'update_device_location', `${lat.toFixed(5)}, ${lon.toFixed(5)} (user=${targetUserId})`);
     res.json({ ok: true, geo: updated });
   } catch (e) {
     res.status(500).json({ error: 'Saqlashda xato' });
   }
 });
 
-// Butun tizimni vaqtincha o'chirib qo'yish (Mute)
+// Tizimni vaqtincha o'chirib qo'yish (Mute - Har bir maktab uchun alohida)
 app.get('/api/admin/mute', requireLogin, async (req, res) => {
   try {
-    const val = await getSetting('bell_muted');
+    const targetUserId = getTargetUserId(req);
+    const val = await getUserMuteState(targetUserId);
     res.json({ muted: val === true });
   } catch (e) {
     res.json({ muted: false });
@@ -403,23 +435,25 @@ app.get('/api/admin/mute', requireLogin, async (req, res) => {
 });
 
 app.post('/api/admin/mute', requireLogin, async (req, res) => {
-  const muted = !!(req.body && req.body.muted);
+  const { muted, userId } = req.body || {};
   try {
-    await setSetting('bell_muted', muted);
-    await addAuditLog(req.session.username, muted ? 'bell_muted' : 'bell_unmuted');
-    res.json({ ok: true, muted });
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    await setUserMuteState(targetUserId, !!muted);
+    await addAuditLog(req.session.username, muted ? 'bell_muted' : 'bell_unmuted', `user=${targetUserId}`);
+    res.json({ ok: true, muted: !!muted });
   } catch (e) {
     res.status(500).json({ error: 'Xatolik' });
   }
 });
 
-// Favqulodda yoki Sinov tariqasida qo'lda darhol chalish
+// Favqulodda yoki Sinov tariqasida qo'lda darhol chalish (Multi-tenant)
 app.post('/api/admin/trigger-bell', requireLogin, async (req, res) => {
-  const { action, duration_sec, ring_pattern, pulse_count, pulse_gap_sec } = req.body || {};
+  const { action, duration_sec, ring_pattern, pulse_count, pulse_gap_sec, userId } = req.body || {};
   try {
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
     if (action === 'stop') {
-      await setPendingCommand({ action: 'stop' });
-      await addAuditLog(req.session.username, 'manual_stop', 'Qo\'ng\'iroq qo\'lda to\'xtatildi');
+      await setPendingCommand(targetUserId, { action: 'stop' });
+      await addAuditLog(req.session.username, 'manual_stop', `Qo'ng'iroq to'xtatildi (user=${targetUserId})`);
       return res.json({ ok: true, message: 'To\'xtatish buyrug\'i yuborildi' });
     }
 
@@ -434,8 +468,8 @@ app.post('/api/admin/trigger-bell', requireLogin, async (req, res) => {
       created_at: Date.now()
     };
 
-    await setPendingCommand(command);
-    await addAuditLog(req.session.username, 'manual_ring', `${pattern === 'pulsed' ? 'Uzib-uzib' : 'Uzluksiz'} ${duration}s`);
+    await setPendingCommand(targetUserId, command);
+    await addAuditLog(req.session.username, 'manual_ring', `${pattern === 'pulsed' ? 'Uzib-uzib' : 'Uzluksiz'} ${duration}s (user=${targetUserId})`);
     res.json({ ok: true, message: 'Qo\'ng\'iroq buyrug\'i navbatga qo\'yildi' });
   } catch (e) {
     res.status(500).json({ error: 'Buyruqni yuborishda xato' });
@@ -480,10 +514,11 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/users', requireAdmin, async (req, res) => {
-  const { username, password, role } = req.body || {};
+  const { username, password, role, schoolName } = req.body || {};
   const cleanUser = (username || '').trim();
   const cleanPass = (password || '').trim();
   const cleanRole = (role === 'admin') ? 'admin' : 'user';
+  const cleanSchool = (schoolName || cleanUser).trim();
 
   if (!cleanUser || !cleanPass) {
     return res.status(400).json({ error: 'Login va parol kiritilishi shart' });
@@ -494,9 +529,9 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
 
   try {
     const hash = bcrypt.hashSync(cleanPass, 12);
-    const user = await createUser(cleanUser, hash, cleanRole);
-    await addAuditLog(req.session.username, 'create_user', `${cleanUser} (${cleanRole})`);
-    res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, api_key: user.api_key } });
+    const user = await createUser(cleanUser, hash, cleanRole, null, cleanSchool);
+    await addAuditLog(req.session.username, 'create_user', `${cleanUser} (${cleanSchool})`);
+    res.json({ ok: true, user: { id: user.id, username: user.username, role: user.role, school_name: user.school_name, api_key: user.api_key } });
   } catch (e) {
     if (e.message === 'UNIQUE') {
       return res.status(400).json({ error: 'Bu login allaqachon mavjud' });
@@ -559,17 +594,16 @@ app.get('/api/admin/audit-log', requireAdmin, async (req, res) => {
   }
 });
 
-// ---------- ESP32 QURILMA UCHUN API ----------
+// ---------- ESP32 QURILMA UCHUN API (MULTI-TENANT) ----------
 async function requireDeviceKey(req, res, next) {
   const key = req.header('X-API-KEY');
   if (!key) return res.status(401).json({ error: 'API kalit kiritilmagan' });
   try {
-    const validKey = await getSetting('device_api_key');
     const userWithKey = await findUserByApiKey(key);
-    if (key !== validKey && !userWithKey) {
+    if (!userWithKey) {
       return res.status(401).json({ error: 'API kalit noto\'g\'ri' });
     }
-    req.deviceUser = userWithKey || null;
+    req.deviceUser = userWithKey;
     next();
   } catch (e) {
     return res.status(500).json({ error: 'Autentifikatsiya xatosi' });
@@ -578,35 +612,30 @@ async function requireDeviceKey(req, res, next) {
 
 app.get('/api/device/schedule', requireDeviceKey, async (req, res) => {
   try {
+    const deviceUser = req.deviceUser;
     const clientIp = (req.headers['x-forwarded-for'] ? req.headers['x-forwarded-for'].split(',')[0].trim() : req.ip) || req.socket.remoteAddress;
-    const prevSeen = await getSetting('device_last_seen');
+    const prevSeen = deviceUser.last_seen;
     const wasOffline = !prevSeen || (Date.now() - new Date(prevSeen).getTime()) > 3 * 60 * 1000;
-    await setSetting('device_last_seen', new Date().toISOString());
-    await setSetting('device_last_ip', clientIp);
+
+    // Asinxron geolokatsiyani aniqlash va foydalanuvchi qatorida yangilash
+    resolveIpGeo(clientIp).then(async (geo) => {
+      await updateUserDeviceStatus(deviceUser.id, clientIp, geo);
+    }).catch(async () => {
+      await updateUserDeviceStatus(deviceUser.id, clientIp, null);
+    });
+
     if (wasOffline) {
-      const userTag = req.deviceUser ? ` (${req.deviceUser.username})` : '';
-      await addAuditLog(null, 'device_connected', `IP: ${clientIp}${userTag}`);
+      await addAuditLog(null, 'device_connected', `IP: ${clientIp} (${deviceUser.school_name || deviceUser.username})`);
     }
 
-    // Geolokatsiyani asinxron yangilab qo'yish
-    resolveIpGeo(clientIp).then(async (geo) => {
-      if (geo) {
-        const existingGeo = await getSetting('device_geo');
-        if (!existingGeo || existingGeo.ip !== clientIp) {
-          await setSetting('device_geo', { ...geo, updated_at: new Date().toISOString() });
-        }
-      }
-    }).catch(() => {});
+    // Faqat shu qurilma/foydalanuvchiga tegishli jadval
+    const payload = await getFullSchedule(deviceUser.id);
+    payload.muted = deviceUser.bell_muted === true;
 
-    const payload = await getFullSchedule();
-    const isMuted = await getSetting('bell_muted');
-    payload.muted = isMuted === true;
-
-    // Agar darhol chalish buyrug'i berilgan bo'lsa
-    const cmd = await popPendingCommand();
+    // Faqat shu qurilma/foydalanuvchiga yuborilgan buyruqni olish
+    const cmd = await popPendingCommand(deviceUser.id);
     if (cmd) {
       const createdAtMs = cmd.created_at ? new Date(cmd.created_at).getTime() : Date.now();
-      // Faqat oxirgi 2 daqiqa ichida yuborilgan yangi buyruqlarni ijro etish
       if (Date.now() - createdAtMs < 2 * 60 * 1000) {
         payload.command = cmd;
       }

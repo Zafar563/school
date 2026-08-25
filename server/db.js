@@ -23,7 +23,7 @@ async function initDb() {
   isInitialized = true;
 }
 
-// ---------------- USERS ----------------
+// ---------------- USERS (MULTI-TENANT) ----------------
 async function findUserByUsername(username) {
   const { rows } = await pool.query('SELECT * FROM users WHERE username = $1 LIMIT 1', [username]);
   return rows[0] || null;
@@ -40,14 +40,15 @@ async function findUserByApiKey(apiKey) {
   return rows[0] || null;
 }
 
-async function createUser(username, passwordHash, role = 'admin', apiKey = null) {
+async function createUser(username, passwordHash, role = 'user', apiKey = null, schoolName = '') {
   const key = apiKey || crypto.randomBytes(24).toString('hex');
+  const cleanSchool = (schoolName || username).trim();
   try {
     const { rows } = await pool.query(
-      `INSERT INTO users (username, password_hash, role, api_key)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (username, password_hash, role, api_key, school_name)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [username, passwordHash, role, key]
+      [username, passwordHash, role, key, cleanSchool]
     );
     return rows[0];
   } catch (err) {
@@ -68,6 +69,11 @@ async function updateUserRole(userId, role) {
   return res.rowCount > 0;
 }
 
+async function updateUserSchoolName(userId, name) {
+  const res = await pool.query('UPDATE users SET school_name = $1 WHERE id = $2', [(name || '').trim(), parseInt(userId, 10)]);
+  return res.rowCount > 0;
+}
+
 async function regenerateUserApiKey(userId) {
   const newKey = crypto.randomBytes(24).toString('hex');
   const res = await pool.query('UPDATE users SET api_key = $1 WHERE id = $2 RETURNING api_key', [newKey, parseInt(userId, 10)]);
@@ -75,7 +81,10 @@ async function regenerateUserApiKey(userId) {
 }
 
 async function getAllUsers() {
-  const { rows } = await pool.query('SELECT id, username, role, api_key, created_at FROM users ORDER BY id ASC');
+  const { rows } = await pool.query(
+    `SELECT id, username, role, school_name, api_key, last_seen, last_ip, geo, custom_coords, bell_muted, created_at 
+     FROM users ORDER BY id ASC`
+  );
   return rows;
 }
 
@@ -84,7 +93,48 @@ async function deleteUser(userId) {
   return res.rowCount > 0;
 }
 
-// ---------------- SETTINGS ----------------
+// ---------------- DEVICE & MUTE STATES (PER USER) ----------------
+async function updateUserDeviceStatus(userId, ip, geo) {
+  const uid = parseInt(userId, 10);
+  const now = new Date().toISOString();
+  if (geo) {
+    await pool.query(
+      `UPDATE users SET last_seen = $1, last_ip = $2, geo = $3::jsonb WHERE id = $4`,
+      [now, ip, JSON.stringify(geo), uid]
+    );
+  } else {
+    await pool.query(
+      `UPDATE users SET last_seen = $1, last_ip = $2 WHERE id = $3`,
+      [now, ip, uid]
+    );
+  }
+}
+
+async function updateUserCustomCoords(userId, coords) {
+  const uid = parseInt(userId, 10);
+  await pool.query('UPDATE users SET custom_coords = $1::jsonb WHERE id = $2', [JSON.stringify(coords), uid]);
+}
+
+async function getUserMuteState(userId) {
+  const uid = parseInt(userId, 10);
+  const { rows } = await pool.query('SELECT bell_muted FROM users WHERE id = $1', [uid]);
+  return rows[0] ? rows[0].bell_muted === true : false;
+}
+
+async function setUserMuteState(userId, muted) {
+  const uid = parseInt(userId, 10);
+  await pool.query('UPDATE users SET bell_muted = $1 WHERE id = $2', [muted === true, uid]);
+}
+
+async function getAllDevicesStatus() {
+  const { rows } = await pool.query(
+    `SELECT id, username, role, school_name, api_key, last_seen, last_ip, geo, custom_coords, bell_muted 
+     FROM users ORDER BY id ASC`
+  );
+  return rows;
+}
+
+// ---------------- SETTINGS (GLOBAL) ----------------
 async function getSetting(key) {
   const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1 LIMIT 1', [key]);
   if (!rows[0]) return null;
@@ -100,11 +150,13 @@ async function setSetting(key, value) {
   );
 }
 
-// ---------------- SCHEDULE ----------------
-async function getFullSchedule() {
+// ---------------- SCHEDULE (PER USER / MULTI-TENANT) ----------------
+async function getFullSchedule(userId) {
+  const uid = parseInt(userId, 10);
   const days = { 1: { items: [] }, 2: { items: [] }, 3: { items: [] }, 4: { items: [] }, 5: { items: [] }, 6: { items: [] } };
   const { rows: items } = await pool.query(
-    'SELECT * FROM schedule_items ORDER BY day_of_week ASC, hour ASC, minute ASC'
+    'SELECT * FROM schedule_items WHERE user_id = $1 ORDER BY day_of_week ASC, hour ASC, minute ASC',
+    [uid]
   );
 
   for (const it of items) {
@@ -124,7 +176,8 @@ async function getFullSchedule() {
   }
 
   const { rows: holidays } = await pool.query(
-    "SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date FROM holidays ORDER BY date ASC"
+    "SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date FROM holidays WHERE user_id = $1 ORDER BY date ASC",
+    [uid]
   );
 
   return {
@@ -133,12 +186,13 @@ async function getFullSchedule() {
   };
 }
 
-async function setDaySchedule(day, items) {
+async function setDaySchedule(userId, day, items) {
+  const uid = parseInt(userId, 10);
   const dayNum = parseInt(day, 10);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM schedule_items WHERE day_of_week = $1', [dayNum]);
+    await client.query('DELETE FROM schedule_items WHERE user_id = $1 AND day_of_week = $2', [uid, dayNum]);
 
     for (const it of items) {
       const pattern = it.ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
@@ -150,9 +204,9 @@ async function setDaySchedule(day, items) {
       const pulseGap = Math.min(10, Math.max(1, parseInt(it.pulse_gap_sec) || 1));
 
       await client.query(
-        `INSERT INTO schedule_items (day_of_week, hour, minute, duration_sec, label, ring_pattern, pulse_count, pulse_gap_sec)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [dayNum, hour, minute, duration, label, pattern, pulseCount, pulseGap]
+        `INSERT INTO schedule_items (user_id, day_of_week, hour, minute, duration_sec, label, ring_pattern, pulse_count, pulse_gap_sec)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [uid, dayNum, hour, minute, duration, label, pattern, pulseCount, pulseGap]
       );
     }
     await client.query('COMMIT');
@@ -164,29 +218,33 @@ async function setDaySchedule(day, items) {
   }
 }
 
-// ---------------- HOLIDAYS ----------------
-async function getHolidays() {
+// ---------------- HOLIDAYS (PER USER / MULTI-TENANT) ----------------
+async function getHolidays(userId) {
+  const uid = parseInt(userId, 10);
   const { rows } = await pool.query(
-    "SELECT id, TO_CHAR(date, 'YYYY-MM-DD') AS date, name, created_at FROM holidays ORDER BY date ASC"
+    "SELECT id, TO_CHAR(date, 'YYYY-MM-DD') AS date, name, created_at FROM holidays WHERE user_id = $1 ORDER BY date ASC",
+    [uid]
   );
   return rows;
 }
 
-async function addHoliday(date, name) {
+async function addHoliday(userId, date, name) {
+  const uid = parseInt(userId, 10);
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('INVALID_DATE');
   const cleanName = (name || '').trim();
   const { rows } = await pool.query(
-    `INSERT INTO holidays (date, name)
-     VALUES ($1::date, $2)
-     ON CONFLICT (date) DO UPDATE SET name = EXCLUDED.name
+    `INSERT INTO holidays (user_id, date, name)
+     VALUES ($1, $2::date, $3)
+     ON CONFLICT (user_id, date) DO UPDATE SET name = EXCLUDED.name
      RETURNING id, TO_CHAR(date, 'YYYY-MM-DD') AS date, name, created_at`,
-    [date, cleanName]
+    [uid, date, cleanName]
   );
   return rows[0];
 }
 
-async function removeHoliday(id) {
-  const res = await pool.query('DELETE FROM holidays WHERE id = $1', [parseInt(id, 10)]);
+async function removeHoliday(userId, id) {
+  const uid = parseInt(userId, 10);
+  const res = await pool.query('DELETE FROM holidays WHERE user_id = $1 AND id = $2', [uid, parseInt(id, 10)]);
   return res.rowCount > 0;
 }
 
@@ -206,17 +264,20 @@ async function getAuditLog(limit = 100) {
   return rows;
 }
 
-// ---------------- PENDING COMMANDS ----------------
-async function setPendingCommand(cmd) {
-  await pool.query('INSERT INTO pending_commands (command) VALUES ($1::jsonb)', [JSON.stringify(cmd)]);
+// ---------------- PENDING COMMANDS (PER USER) ----------------
+async function setPendingCommand(userId, cmd) {
+  const uid = parseInt(userId, 10);
+  await pool.query('INSERT INTO pending_commands (user_id, command) VALUES ($1, $2::jsonb)', [uid, JSON.stringify(cmd)]);
 }
 
-async function popPendingCommand() {
+async function popPendingCommand(userId) {
+  const uid = parseInt(userId, 10);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      'SELECT id, command, created_at FROM pending_commands ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED'
+      'SELECT id, command, created_at FROM pending_commands WHERE user_id = $1 ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED',
+      [uid]
     );
     if (!rows[0]) {
       await client.query('COMMIT');
@@ -238,11 +299,13 @@ async function popPendingCommand() {
 module.exports = {
   pool, initDb,
   findUserByUsername, findUserById, findUserByApiKey,
-  createUser, updateUserPassword, updateUserRole, regenerateUserApiKey,
+  createUser, updateUserPassword, updateUserRole, updateUserSchoolName, regenerateUserApiKey,
   getAllUsers, deleteUser,
   getSetting, setSetting,
   getFullSchedule, setDaySchedule,
   getHolidays, addHoliday, removeHoliday,
   setPendingCommand, popPendingCommand,
+  updateUserDeviceStatus, updateUserCustomCoords,
+  getUserMuteState, setUserMuteState, getAllDevicesStatus,
   addAuditLog, getAuditLog
 };

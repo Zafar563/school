@@ -1,20 +1,35 @@
-// Kun nomlari (Dushanba=1 ... Shanba=6, Yakshanba=0 ko'rsatilmaydi)
-const DAY_NAMES = { 1:'Dushanba', 2:'Seshanba', 3:'Chorshanba', 4:'Payshanba', 5:'Juma', 6:'Shanba' };
+// Maktab Qo'ng'irog'i — Boshqaruv paneli skripti (Multi-tenant)
+
+const DAY_NAMES = {
+  1: 'Dushanba',
+  2: 'Seshanba',
+  3: 'Chorshanba',
+  4: 'Payshanba',
+  5: 'Juma',
+  6: 'Shanba'
+};
+
 const DAY_KEYS = [1, 2, 3, 4, 5, 6];
 
-let currentDay = (new Date().getDay() === 0) ? 1 : new Date().getDay();
+let currentDay = 1;
 let scheduleData = null;
-let currentRole = 'admin';
+let currentRole = 'user';
+let currentUserId = null;
+let currentSchoolName = 'Maktab';
+let currentUserApiKey = '';
+
 const isAdmin = () => currentRole === 'admin';
 
 // ============================================================
-// THEME (TUNGI / KUNDUZGI REJIM)
+// THEME (Tungi / Kunduzgi rejim)
 // ============================================================
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const themeIconSun = document.getElementById('themeIconSun');
 const themeIconMoon = document.getElementById('themeIconMoon');
 
-function updateDashboardThemeIcons(theme) {
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
   if (theme === 'dark') {
     if (themeIconSun) themeIconSun.style.display = 'block';
     if (themeIconMoon) themeIconMoon.style.display = 'none';
@@ -24,23 +39,19 @@ function updateDashboardThemeIcons(theme) {
   }
 }
 
-updateDashboardThemeIcons(document.documentElement.getAttribute('data-theme') || 'light');
+const initialTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+applyTheme(initialTheme);
 
 if (themeToggleBtn) {
   themeToggleBtn.onclick = () => {
-    const current = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateDashboardThemeIcons(next);
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(cur === 'dark' ? 'light' : 'dark');
   };
 }
 
 // ============================================================
-// BRANDING (maktab nomi)
+// BRANDING
 // ============================================================
-let currentSchoolName = 'Maktab';
-
 function loadBranding() {
   fetch('/api/branding').then(r => r.json()).then(d => {
     currentSchoolName = d.schoolName || 'Maktab';
@@ -72,8 +83,9 @@ if (saveSchoolNameBtn) {
   };
 }
 
-let currentUserApiKey = '';
-
+// ============================================================
+// ROLE & MULTI-TENANT VISIBILITY
+// ============================================================
 function applyRoleVisibility(role) {
   const admin = role === 'admin';
   document.body.classList.remove('is-admin', 'is-user');
@@ -89,7 +101,6 @@ function applyRoleVisibility(role) {
     roleLabel.style.color = admin ? 'var(--primary)' : 'var(--success)';
   }
 
-  // Agar oddiy user admin-only tabda turgan bo'lsa, uni jadvalga qaytarish
   if (!admin) {
     const activeTab = document.querySelector('.sidebar nav a.active');
     if (activeTab && activeTab.classList.contains('admin-only')) {
@@ -100,14 +111,22 @@ function applyRoleVisibility(role) {
 }
 
 // ============================================================
-// AUTH
+// AUTH & INITIALIZATION
 // ============================================================
 fetch('/api/me').then(r => r.json()).then(d => {
   if (!d.loggedIn) { window.location.href = '/login.html'; return; }
+  currentUserId = d.userId;
   document.getElementById('userLabel').textContent = d.username;
   currentRole = d.role || 'user';
   currentUserApiKey = d.apiKey || '';
+  if (d.schoolName) {
+    currentSchoolName = d.schoolName;
+    document.getElementById('sidebarSchoolName').textContent = currentSchoolName;
+  }
   applyRoleVisibility(currentRole);
+  if (isAdmin()) {
+    loadSchoolDropdowns();
+  }
   startDevicePolling();
   loadSchedule();
   loadMuteState();
@@ -118,7 +137,7 @@ document.getElementById('logoutBtn').onclick = () => {
 };
 
 // ============================================================
-// TABS
+// TABS NAVIGATION
 // ============================================================
 document.querySelectorAll('.sidebar nav a').forEach(a => {
   a.addEventListener('click', () => {
@@ -132,13 +151,20 @@ document.querySelectorAll('.sidebar nav a').forEach(a => {
     const titleMap = {
       schedule: 'Qo\'ng\'iroq jadvali',
       holidays: 'Bayramlar va ta\'tillar',
-      device: 'Qurilma sozlamalari',
+      device: 'Qurilmalar va aloqa',
       account: 'Hisobim',
       users: 'Foydalanuvchilar',
       log: 'Amallar tarixi'
     };
     document.getElementById('pageTitle').textContent = titleMap[tab] || '';
-    if (tab === 'holidays') loadHolidays();
+    if (tab === 'schedule') {
+      if (isAdmin()) loadSchoolDropdowns();
+      loadSchedule();
+    }
+    if (tab === 'holidays') {
+      if (isAdmin()) loadSchoolDropdowns();
+      loadHolidays();
+    }
     if (tab === 'device') loadDevice();
     if (tab === 'account') loadTelegramConfig();
     if (tab === 'users') loadUsers();
@@ -170,22 +196,77 @@ setInterval(tickClock, 1000);
 tickClock();
 
 // ============================================================
+// ADMIN SCHOOL DROPDOWNS (MULTI-TENANT)
+// ============================================================
+let allUsersList = [];
+
+function loadSchoolDropdowns() {
+  if (!isAdmin()) return;
+  fetch('/api/admin/users').then(r => r.json()).then(users => {
+    allUsersList = users;
+    const options = users.map(u => `<option value="${u.id}">${u.school_name || u.username} (@${u.username})</option>`).join('');
+
+    const sSelect = document.getElementById('adminScheduleUserSelect');
+    if (sSelect) {
+      const prev = sSelect.value;
+      sSelect.innerHTML = options;
+      if (prev && users.some(u => String(u.id) === String(prev))) sSelect.value = prev;
+      else if (users[0]) sSelect.value = users[0].id;
+    }
+
+    const hSelect = document.getElementById('adminHolidayUserSelect');
+    if (hSelect) {
+      const prev = hSelect.value;
+      hSelect.innerHTML = options;
+      if (prev && users.some(u => String(u.id) === String(prev))) hSelect.value = prev;
+      else if (users[0]) hSelect.value = users[0].id;
+    }
+  }).catch(() => {});
+}
+
+const adminScheduleSelect = document.getElementById('adminScheduleUserSelect');
+if (adminScheduleSelect) {
+  adminScheduleSelect.onchange = () => {
+    loadSchedule();
+  };
+}
+
+const adminHolidaySelect = document.getElementById('adminHolidayUserSelect');
+if (adminHolidaySelect) {
+  adminHolidaySelect.onchange = () => {
+    loadHolidays();
+  };
+}
+
+function getActiveScheduleUserId() {
+  if (isAdmin()) {
+    const s = document.getElementById('adminScheduleUserSelect');
+    if (s && s.value) return s.value;
+  }
+  return null;
+}
+
+function getActiveHolidayUserId() {
+  if (isAdmin()) {
+    const h = document.getElementById('adminHolidayUserSelect');
+    if (h && h.value) return h.value;
+  }
+  return null;
+}
+
+// ============================================================
 // SCHEDULE — ROW BUILD
 // ============================================================
 function timeStr(h, m) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
-// type: 'in' = Kirish (continuous), 'out' = Chiqish (pulsed), 'custom' = Qo'lda
 function rowHtml(prefix, idx, it) {
   const t = timeStr(it.hour, it.minute);
   const pattern = it.ring_pattern === 'pulsed' ? 'pulsed' : 'continuous';
   const pc = it.pulse_count || 3;
   const pg = it.pulse_gap_sec || 1;
   const dur = it.duration_sec || 5;
-
-  // Determine current type from pattern
-  // We don't store 'type' — infer from pattern for display
   const showPulse = pattern === 'pulsed';
 
   return `<div class="time-row" id="${prefix}row${idx}">
@@ -257,7 +338,7 @@ function collectRows(prefix) {
 }
 
 // ============================================================
-// DAY TABS
+// DAY TABS & SCHEDULE LOGIC
 // ============================================================
 function renderDayTabs() {
   const el = document.getElementById('dayTabs');
@@ -280,18 +361,21 @@ function refreshDayView() {
 }
 
 function loadSchedule() {
-  fetch('/api/admin/schedule').then(r => r.json()).then(data => {
+  const targetId = getActiveScheduleUserId();
+  const url = targetId ? `/api/admin/schedule?userId=${targetId}` : '/api/admin/schedule';
+  fetch(url).then(r => r.json()).then(data => {
     scheduleData = data;
     refreshDayView();
-  });
+  }).catch(() => toast('Jadvalni yuklashda xato', 'error'));
 }
 
 function saveDay() {
   const items = collectRows('day');
+  const targetId = getActiveScheduleUserId();
   fetch('/api/admin/schedule/day', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ day: currentDay, items })
+    body: JSON.stringify({ day: currentDay, items, userId: targetId })
   }).then(r => r.json()).then(d => {
     if (d.ok) {
       toast(DAY_NAMES[currentDay] + ' jadvali saqlandi ✓');
@@ -302,7 +386,6 @@ function saveDay() {
   }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
 }
 
-// Button event listeners
 document.getElementById('addRowBtn').onclick = () => addRow('day');
 document.getElementById('saveDayBtn').onclick = saveDay;
 
@@ -414,9 +497,12 @@ document.getElementById('muteSwitch').onclick = () => {
 };
 
 // ============================================================
-// DEVICE TAB
+// DEVICE TAB & MAP (LEAFLET + OPENSTREETMAP)
 // ============================================================
 let deviceWasOnline = null;
+let deviceMap = null;
+let deviceMarkers = {};
+let customPinnedCoords = null;
 
 function relativeTime(iso) {
   if (!iso) return null;
@@ -429,6 +515,24 @@ function relativeTime(iso) {
   return hr < 24 ? `${hr} soat oldin` : new Date(iso).toLocaleString('uz-UZ');
 }
 
+function initDeviceMap() {
+  const mapEl = document.getElementById('deviceMap');
+  if (!mapEl || typeof L === 'undefined' || deviceMap) return false;
+
+  const tabEl = document.getElementById('tab-device');
+  if (tabEl && tabEl.style.display === 'none') return false;
+
+  try {
+    deviceMap = L.map('deviceMap').setView([41.2995, 69.2401], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(deviceMap);
+    return true;
+  } catch (e) {}
+  return false;
+}
+
 function pollDeviceStatus() {
   fetch('/api/admin/device-status').then(r => r.json()).then(d => {
     const scene = document.getElementById('connScene');
@@ -439,7 +543,6 @@ function pollDeviceStatus() {
     const linkLabel = document.getElementById('connLinkLabel');
     const serverSub = document.getElementById('connServerSub');
 
-    // Apply scene state
     if (scene) {
       scene.classList.remove('online', 'offline');
       if (d.online === true) scene.classList.add('online');
@@ -478,7 +581,7 @@ function pollDeviceStatus() {
     }
 
     if (serverSub) {
-      serverSub.textContent = d.online ? 'Faol' : (d.lastSeen ? 'Kutmoqda' : 'Kutmoqda');
+      serverSub.textContent = d.online ? 'Faol' : 'Kutmoqda';
     }
 
     if (detail) {
@@ -496,69 +599,74 @@ function pollDeviceStatus() {
     deviceWasOnline = d.online;
 
     if (d.geo) {
-      updateDeviceMap(d.geo, d.online);
+      updateDeviceMap(d.geo, d.online, d.schoolName || d.username);
     }
   }).catch(() => {});
 }
 
-// ============================================================
-// DEVICE MAP (LEAFLET + OPENSTREETMAP)
-// ============================================================
-let deviceMap = null;
-let deviceMarker = null;
-let customPinnedCoords = null;
-let pendingGeoData = null;
-let pendingOnlineState = null;
+function updateDeviceMap(geo, isOnline, title) {
+  if (!geo) return;
+  initDeviceMap();
 
-function initDeviceMap() {
-  const mapEl = document.getElementById('deviceMap');
-  if (!mapEl || typeof L === 'undefined' || deviceMap) return false;
+  const lat = geo.lat || 41.2995;
+  const lon = geo.lon || 69.2401;
+  const city = geo.city || 'Toshkent';
+  const region = geo.region ? ` (${geo.region})` : '';
+  const isp = geo.isp || '—';
+  const ip = geo.ip || '—';
 
-  // Leaflet xaritani faqat tab ko'rinayotganda yaratish mumkin
-  const tabEl = document.getElementById('tab-device');
-  if (tabEl && tabEl.style.display === 'none') return false;
+  const cityEl = document.getElementById('geoCityVal');
+  const ispEl = document.getElementById('geoIspVal');
+  const coordsEl = document.getElementById('geoCoordsVal');
+  const ipEl = document.getElementById('geoIpVal');
+  const mapCityText = document.getElementById('mapCityText');
 
-  try {
-    deviceMap = L.map('deviceMap').setView([41.2995, 69.2401], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(deviceMap);
+  if (cityEl) cityEl.textContent = `${city}${region}`;
+  if (ispEl) ispEl.textContent = isp;
+  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+  if (ipEl) ipEl.textContent = ip;
+  if (mapCityText) mapCityText.textContent = `${city}`;
 
-    const schoolIcon = L.divIcon({
-      className: 'school-map-pin',
-      html: '<div style="background:#4F46E5; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px rgba(79,70,229,0.5); font-size:16px; border:2px solid white;">🔔</div>',
-      iconSize: [34, 34],
-      iconAnchor: [17, 17]
-    });
-
-    deviceMarker = L.marker([41.2995, 69.2401], {
-      icon: schoolIcon,
-      draggable: isAdmin()
-    }).addTo(deviceMap);
-
-    deviceMarker.bindPopup('<b>ESP32 Maktab Qo\'ng\'irog\'i</b><br>Joylashuvi aniqlanmoqda...');
-
-    if (isAdmin()) {
-      deviceMarker.on('dragend', function (e) {
-        const pos = e.target.getLatLng();
-        customPinnedCoords = { lat: pos.lat, lon: pos.lng };
-        const saveBtn = document.getElementById('saveLocationBtn');
-        if (saveBtn) {
-          saveBtn.style.display = 'inline-flex';
-          saveBtn.textContent = `💾 Saqlash (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)})`;
-        }
-        toast('Yangi nuqta tanlandi. Saqlash uchun tugmani bosing.');
+  if (deviceMap) {
+    if (!deviceMarkers['main']) {
+      const schoolIcon = L.divIcon({
+        className: 'school-map-pin',
+        html: '<div style="background:#4F46E5; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px rgba(79,70,229,0.5); font-size:16px; border:2px solid white;">🔔</div>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
       });
+
+      const marker = L.marker([lat, lon], {
+        icon: schoolIcon,
+        draggable: isAdmin()
+      }).addTo(deviceMap);
+
+      if (isAdmin()) {
+        marker.on('dragend', function (e) {
+          const pos = e.target.getLatLng();
+          customPinnedCoords = { lat: pos.lat, lon: pos.lng };
+          const saveBtn = document.getElementById('saveLocationBtn');
+          if (saveBtn) {
+            saveBtn.style.display = 'inline-flex';
+            saveBtn.textContent = `💾 Saqlash (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)})`;
+          }
+          toast('Yangi nuqta tanlandi. Saqlash uchun tugmani bosing.');
+        });
+      }
+      deviceMarkers['main'] = marker;
     }
 
-    // Agar oldindan yig'ilgan geo ma'lumotlar bo'lsa, hozir ko'rsatish
-    if (pendingGeoData) {
-      updateDeviceMap(pendingGeoData, pendingOnlineState);
-    }
-    return true;
-  } catch (e) {}
-  return false;
+    const marker = deviceMarkers['main'];
+    marker.setLatLng([lat, lon]);
+    marker.bindPopup(`<b>🔔 ${title || currentSchoolName}</b><br>Holati: ${isOnline ? '<span style="color:#059669;font-weight:600">🟢 Onlayn</span>' : '<span style="color:#DC2626;font-weight:600">🔴 Oflayn</span>'}<br>Shahar: ${city}<br>Provayder: ${isp}<br>IP: ${ip}`);
+
+    setTimeout(() => {
+      if (deviceMap) {
+        deviceMap.invalidateSize();
+        deviceMap.panTo([lat, lon]);
+      }
+    }, 200);
+  }
 }
 
 const saveLocationBtn = document.getElementById('saveLocationBtn');
@@ -581,65 +689,11 @@ if (saveLocationBtn) {
   };
 }
 
-function updateDeviceMap(geo, isOnline) {
-  if (!geo) return;
-
-  // Geo ma'lumotlarini doimo saqlash (xarita hali yaratilmagan bo'lsa)
-  pendingGeoData = geo;
-  pendingOnlineState = isOnline;
-
-  const lat = geo.lat || 41.2995;
-  const lon = geo.lon || 69.2401;
-
-  const city = geo.city || 'Toshkent';
-  const region = geo.region ? ` (${geo.region})` : '';
-  const isp = geo.isp || '—';
-  const ip = geo.ip || '—';
-
-  const cityEl = document.getElementById('geoCityVal');
-  const ispEl = document.getElementById('geoIspVal');
-  const coordsEl = document.getElementById('geoCoordsVal');
-  const ipEl = document.getElementById('geoIpVal');
-  const mapCityText = document.getElementById('mapCityText');
-
-  if (cityEl) cityEl.textContent = `${city}${region}`;
-  if (ispEl) ispEl.textContent = isp;
-  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
-  if (ipEl) ipEl.textContent = ip;
-  if (mapCityText) mapCityText.textContent = `${city}`;
-
-  // Xarita hali tayyor emas bo'lsa, yaratishga urinish
-  if (!deviceMap) {
-    initDeviceMap();
-  }
-
-  if (deviceMap && deviceMarker) {
-    deviceMarker.setLatLng([lat, lon]);
-    deviceMarker.getPopup().setContent(`<b>🔔 ${currentSchoolName || 'Maktab'}</b><br>Holati: ${isOnline ? '<span style="color:#059669;font-weight:600">🟢 Onlayn</span>' : '<span style="color:#DC2626;font-weight:600">🔴 Oflayn</span>'}<br>Shahar: ${city}<br>Provayder: ${isp}<br>IP: ${ip}`);
-    
-    setTimeout(() => {
-      if (deviceMap) {
-        deviceMap.invalidateSize();
-        deviceMap.panTo([lat, lon]);
-      }
-    }, 200);
-  }
-}
-
 function loadDevice() {
   pollDeviceStatus();
-  // Tab ochilganda xarita yaratish yoki o'lchamini yangilash
   setTimeout(() => {
-    if (!deviceMap) {
-      initDeviceMap();
-    }
-    if (deviceMap) {
-      deviceMap.invalidateSize();
-      // Agar geo ma'lumot mavjud bo'lsa, xaritani yangilash
-      if (pendingGeoData) {
-        updateDeviceMap(pendingGeoData, pendingOnlineState);
-      }
-    }
+    if (!deviceMap) initDeviceMap();
+    if (deviceMap) deviceMap.invalidateSize();
   }, 300);
 }
 
@@ -661,9 +715,9 @@ function loadTelegramConfig() {
   }).catch(() => {});
 }
 
-const saveTelegramBtn = document.getElementById('saveTelegramBtn');
-if (saveTelegramBtn) {
-  saveTelegramBtn.onclick = () => {
+const saveTgBtn = document.getElementById('saveTelegramBtn');
+if (saveTgBtn) {
+  saveTgBtn.onclick = () => {
     const token = (document.getElementById('tgTokenInput') || {}).value.trim();
     const adminChatId = (document.getElementById('tgChatIdInput') || {}).value.trim();
     fetch('/api/admin/telegram', {
@@ -672,9 +726,9 @@ if (saveTelegramBtn) {
       body: JSON.stringify({ token, adminChatId })
     }).then(async r => {
       const d = await r.json();
-      if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
-      toast('Telegram sozlamalari saqlandi va bot ishga tushdi ✓');
-    }).catch(() => toast('Server bilan aloqada xato', 'error'));
+      if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+      toast('Telegram bot saqlandi va faollashtirildi ✓');
+    }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
   };
 }
 
@@ -699,6 +753,7 @@ document.getElementById('changePassBtn').onclick = () => {
 // LOG
 // ============================================================
 function loadLog() {
+  if (!isAdmin()) return;
   fetch('/api/admin/audit-log').then(r => r.json()).then(rows => {
     const tbody = document.querySelector('#logTable tbody');
     if (!tbody) return;
@@ -707,11 +762,11 @@ function loadLog() {
       update_day_schedule: 'Jadval yangilandi', password_changed: 'Parol o\'zgartirildi',
       bell_muted: 'Qo\'ng\'iroq o\'chirildi', bell_unmuted: 'Qo\'ng\'iroq yoqildi',
       regenerate_device_key: 'Kalit yangilandi', device_connected: 'Qurilma ulandi',
-      update_school_name: 'Maktab nomi o\'zgartirildi'
+      update_school_name: 'Maktab nomi o\'zgartirildi', create_user: 'Foydalanuvchi yaratildi'
     };
     tbody.innerHTML = rows.map(r => `<tr>
       <td class="mono">${new Date(r.created_at).toLocaleString('uz-UZ')}</td>
-      <td>${r.username || '—'}</td>
+      <td><b>${r.username || '—'}</b></td>
       <td>${actionLabel[r.action] || r.action}</td>
       <td>${r.detail || ''}</td>
     </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">Tarix bo\'sh</td></tr>';
@@ -719,10 +774,12 @@ function loadLog() {
 }
 
 // ============================================================
-// HOLIDAYS
+// HOLIDAYS (MULTI-TENANT)
 // ============================================================
 function loadHolidays() {
-  fetch('/api/admin/holidays').then(r => r.json()).then(items => {
+  const targetId = getActiveHolidayUserId();
+  const url = targetId ? `/api/admin/holidays?userId=${targetId}` : '/api/admin/holidays';
+  fetch(url).then(r => r.json()).then(items => {
     const tbody = document.getElementById('holidaysList');
     const empty = document.getElementById('holidaysEmpty');
     if (!tbody) return;
@@ -763,11 +820,12 @@ if (addHolidayBtn) {
   addHolidayBtn.onclick = () => {
     const date = (document.getElementById('holidayDateInput') || {}).value;
     const name = (document.getElementById('holidayNameInput') || {}).value.trim();
+    const targetId = getActiveHolidayUserId();
     if (!date) { toast('Sanani tanlang', 'error'); return; }
     fetch('/api/admin/holidays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, name })
+      body: JSON.stringify({ date, name, userId: targetId })
     }).then(async r => {
       const d = await r.json();
       if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
@@ -779,17 +837,17 @@ if (addHolidayBtn) {
   };
 }
 
-// O'zbekiston rasmiy bayramlarini tez qo'shish tugmalari
 document.querySelectorAll('#quickHolidays button').forEach(btn => {
   btn.onclick = () => {
     const currentYear = new Date().getFullYear();
     const mmdd = btn.dataset.date;
     const name = btn.dataset.name;
     const fullDate = `${currentYear}-${mmdd}`;
+    const targetId = getActiveHolidayUserId();
     fetch('/api/admin/holidays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: fullDate, name })
+      body: JSON.stringify({ date, fullDate, name, userId: targetId })
     }).then(async r => {
       const d = await r.json();
       if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
@@ -834,7 +892,7 @@ document.querySelectorAll('.trigger-ring-stop').forEach(btn => {
 });
 
 // ============================================================
-// USERS MANAGEMENT (ADMIN & USER)
+// USERS MANAGEMENT (ADMIN)
 // ============================================================
 function loadUsers() {
   if (!isAdmin()) return;
@@ -843,7 +901,8 @@ function loadUsers() {
     if (!tbody) return;
     tbody.innerHTML = rows.map(u => `<tr>
       <td class="mono">${u.id}</td>
-      <td><b>${u.username}</b></td>
+      <td><b>${u.school_name || u.username}</b></td>
+      <td><span class="mono">@${u.username}</span></td>
       <td>
         <span class="conn-badge" style="padding:2px 8px; font-size:11px; background:${u.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)'}; color:${u.role === 'admin' ? '#2563eb' : '#4b5563'}">
           ${u.role === 'admin' ? '👑 Admin' : '👤 User'}
@@ -851,7 +910,7 @@ function loadUsers() {
       </td>
       <td>
         <div style="display:flex; align-items:center; gap:6px;">
-          <code class="mono" style="background:rgba(0,0,0,0.06); padding:3px 7px; border-radius:4px; font-size:11px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block;" title="${u.api_key || ''}">${u.api_key || '—'}</code>
+          <code class="mono" style="background:rgba(0,0,0,0.06); padding:3px 7px; border-radius:4px; font-size:11px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block;" title="${u.api_key || ''}">${u.api_key || '—'}</code>
           <button class="btn btn-ghost btn-sm" onclick="copyUserApiKey('${u.api_key || ''}')" title="Kalitdan nusxa olish" style="padding:2px 6px; font-size:11px; line-height:1.2;">
             📋 Nusxa
           </button>
@@ -869,14 +928,13 @@ function loadUsers() {
           O'chirish
         </button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
   }).catch(() => toast('Foydalanuvchilarni yuklashda xato', 'error'));
 }
 
 function copyToClipboard(text, successMsg = 'Nusxalandi ✓') {
   if (!text) { toast('Nusxalash uchun matn yo\'q', 'error'); return; }
 
-  // 1. Agar navigator.clipboard mavjud va ruxsat berilgan bo'lsa
   if (navigator.clipboard && (window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.clipboard.writeText(text).then(() => {
       toast(successMsg);
@@ -884,7 +942,6 @@ function copyToClipboard(text, successMsg = 'Nusxalandi ✓') {
       fallbackCopyText(text, successMsg);
     });
   } else {
-    // 2. HTTP yoki qo'llab-quvvatlamaydigan brauzerlar uchun universal fallback
     fallbackCopyText(text, successMsg);
   }
 }
@@ -901,7 +958,7 @@ function fallbackCopyText(text, successMsg) {
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
-    textArea.setSelectionRange(0, 99999); // Mobile uchun
+    textArea.setSelectionRange(0, 99999);
     const successful = document.execCommand('copy');
     document.body.removeChild(textArea);
     if (successful) {
@@ -926,6 +983,7 @@ window.regenerateUserKey = function(id, username) {
       if (d.ok) {
         toast(`"${username}" uchun yangi API kalit yaratildi ✓`);
         loadUsers();
+        loadSchoolDropdowns();
       } else {
         toast(d.error || 'Xatolik', 'error');
       }
@@ -940,6 +998,7 @@ window.deleteUserAccount = function(id, username) {
       if (d.ok) {
         toast('Foydalanuvchi o\'chirildi ✓');
         loadUsers();
+        loadSchoolDropdowns();
       } else {
         toast(d.error || 'Xatolik', 'error');
       }
@@ -969,10 +1028,12 @@ window.resetUserPassword = function(id, username) {
 const createUserBtn = document.getElementById('createUserBtn');
 if (createUserBtn) {
   createUserBtn.onclick = () => {
+    const sInput = document.getElementById('newSchoolNameInput');
     const uInput = document.getElementById('newUsernameInput');
     const pInput = document.getElementById('newUserPasswordInput');
     const rInput = document.getElementById('newUserRoleSelect');
 
+    const schoolName = (sInput || {}).value.trim();
     const username = (uInput || {}).value.trim();
     const password = (pInput || {}).value.trim();
     const role = (rInput || {}).value;
@@ -989,14 +1050,16 @@ if (createUserBtn) {
     fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, role })
+      body: JSON.stringify({ username, password, role, schoolName })
     }).then(async r => {
       const d = await r.json();
       if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
-      toast(`Yangi ${role === 'admin' ? 'Admin' : 'Foydalanuvchi'} ("${username}") yaratildi ✓`);
+      toast(`Yangi maktab ("${schoolName || username}") yaratildi ✓`);
+      if (sInput) sInput.value = '';
       uInput.value = '';
       pInput.value = '';
       loadUsers();
+      loadSchoolDropdowns();
     }).catch(() => toast('Server bilan aloqada xato', 'error'));
   };
 }

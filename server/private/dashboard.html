@@ -99,6 +99,14 @@
 
     <!-- SCHEDULE TAB -->
     <div id="tab-schedule">
+      <div class="admin-only" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; padding:10px 14px; background:rgba(79,70,229,0.06); border:1px solid rgba(79,70,229,0.2); border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:13px; font-weight:600; color:var(--primary);">🏫 Tahrirlanayotgan maktab:</span>
+          <select id="adminScheduleUserSelect" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); font-size:13px; font-weight:600; background:var(--bg-card); color:var(--text-main);"></select>
+        </div>
+        <span style="font-size:11.5px; color:var(--text-muted);">Admin istalgan maktab jadvalini tanlab tahrirlashi mumkin</span>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <div>
@@ -155,6 +163,14 @@
 
     <!-- HOLIDAYS TAB -->
     <div id="tab-holidays" style="display:none">
+      <div class="admin-only" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; padding:10px 14px; background:rgba(79,70,229,0.06); border:1px solid rgba(79,70,229,0.2); border-radius:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:13px; font-weight:600; color:var(--primary);">🏫 Maktab taqvimi:</span>
+          <select id="adminHolidayUserSelect" style="padding:6px 12px; border-radius:6px; border:1px solid var(--border); font-size:13px; font-weight:600; background:var(--bg-card); color:var(--text-main);"></select>
+        </div>
+        <span style="font-size:11.5px; color:var(--text-muted);">Tanlangan maktab uchun bayram/ta'tillar</span>
+      </div>
+
       <div class="card">
         <h2>Bayramlar va Ta'tillar taqvimi</h2>
         <p class="hint">Belgilangan kunlarda qo'ng'iroq avtomatik ravishda chalinmaydi.</p>
@@ -378,8 +394,12 @@
         
         <div class="user-form-grid">
           <div class="field-group">
+            <label>Maktab / Filial nomi</label>
+            <input type="text" id="newSchoolNameInput" placeholder="Masalan: 25-sonli umumta'lim maktabi" autocomplete="off">
+          </div>
+          <div class="field-group">
             <label>Login (foydalanuvchi nomi)</label>
-            <input type="text" id="newUsernameInput" placeholder="Masalan: navbatchi" autocomplete="off">
+            <input type="text" id="newUsernameInput" placeholder="Masalan: maktab25" autocomplete="off">
           </div>
           <div class="field-group">
             <label>Parol (kamida 6 ta belgi)</label>
@@ -408,9 +428,9 @@
       </div>
 
       <div class="card admin-only">
-        <h2>Mavjud foydalanuvchilar</h2>
+        <h2>Mavjud maktablar & foydalanuvchilar</h2>
         <table class="log-table" id="usersTable">
-          <thead><tr><th>ID</th><th>Login</th><th>Rol</th><th>ESP32 API Kalit</th><th>Yaratilgan sana</th><th style="width:160px; text-align:right;">Amal</th></tr></thead>
+          <thead><tr><th>ID</th><th>Maktab nomi</th><th>Login</th><th>Rol</th><th>ESP32 API Kalit</th><th>Yaratilgan sana</th><th style="width:160px; text-align:right;">Amal</th></tr></thead>
           <tbody id="usersList"></tbody>
         </table>
       </div>
