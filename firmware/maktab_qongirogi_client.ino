@@ -376,8 +376,10 @@ void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("WiFi-ga ulanmoqda");
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 20000) {
-    delay(400);
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    checkSchedule();
+    handleRelayTimer();
+    delay(250);
     Serial.print(".");
   }
   Serial.println();
