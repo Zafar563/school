@@ -107,24 +107,24 @@ function getTargetUserId(req) {
   return req.session.userId;
 }
 
-// Oddiy brute-force cheklovi (xotirada)
+// Oddiy brute-force cheklovi (15 soniya)
 const loginAttempts = {};
 setInterval(() => {
   const now = Date.now();
   for (const ip in loginAttempts) {
-    if (now - loginAttempts[ip].first > 15 * 60 * 1000) {
+    if (now - loginAttempts[ip].first > 15 * 1000) {
       delete loginAttempts[ip];
     }
   }
-}, 30 * 60 * 1000);
+}, 30 * 1000);
 
 function rateLimitLogin(req, res, next) {
   const ip = req.ip;
   const now = Date.now();
   const rec = loginAttempts[ip] || { count: 0, first: now };
-  if (now - rec.first > 15 * 60 * 1000) { rec.count = 0; rec.first = now; }
-  if (rec.count >= 10) {
-    return res.status(429).json({ error: 'Juda ko\'p urinish. 15 daqiqadan so\'ng qayta urinib ko\'ring.' });
+  if (now - rec.first > 15 * 1000) { rec.count = 0; rec.first = now; }
+  if (rec.count >= 25) {
+    return res.status(429).json({ error: 'Juda ko\'p urinish. 15 soniyadan so\'ng qayta urinib ko\'ring.' });
   }
   rec.count++;
   loginAttempts[ip] = rec;

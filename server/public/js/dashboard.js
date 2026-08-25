@@ -210,16 +210,26 @@ function loadSchoolDropdowns() {
     if (sSelect) {
       const prev = sSelect.value;
       sSelect.innerHTML = options;
-      if (prev && users.some(u => String(u.id) === String(prev))) sSelect.value = prev;
-      else if (users[0]) sSelect.value = users[0].id;
+      if (prev && users.some(u => String(u.id) === String(prev))) {
+        sSelect.value = prev;
+      } else if (currentUserId && users.some(u => String(u.id) === String(currentUserId))) {
+        sSelect.value = currentUserId;
+      } else if (users[0]) {
+        sSelect.value = users[0].id;
+      }
     }
 
     const hSelect = document.getElementById('adminHolidayUserSelect');
     if (hSelect) {
       const prev = hSelect.value;
       hSelect.innerHTML = options;
-      if (prev && users.some(u => String(u.id) === String(prev))) hSelect.value = prev;
-      else if (users[0]) hSelect.value = users[0].id;
+      if (prev && users.some(u => String(u.id) === String(prev))) {
+        hSelect.value = prev;
+      } else if (currentUserId && users.some(u => String(u.id) === String(currentUserId))) {
+        hSelect.value = currentUserId;
+      } else if (users[0]) {
+        hSelect.value = users[0].id;
+      }
     }
   }).catch(() => {});
 }
