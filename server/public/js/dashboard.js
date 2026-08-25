@@ -794,34 +794,24 @@ function triggerManualBell(opts) {
   }).catch(() => toast('Server bilan aloqada xato', 'error'));
 }
 
-const ring5Btn = document.getElementById('manualRing5Btn');
-if (ring5Btn) {
-  ring5Btn.onclick = () => {
-    triggerManualBell({ action: 'ring', duration_sec: 5, ring_pattern: 'continuous' });
-  };
-}
+document.querySelectorAll('.trigger-ring-5').forEach(btn => {
+  btn.onclick = () => triggerManualBell({ action: 'ring', duration_sec: 5, ring_pattern: 'continuous' });
+});
 
-const ringPulseBtn = document.getElementById('manualRingPulseBtn');
-if (ringPulseBtn) {
-  ringPulseBtn.onclick = () => {
-    triggerManualBell({ action: 'ring', duration_sec: 3, ring_pattern: 'pulsed', pulse_count: 3, pulse_gap_sec: 1 });
-  };
-}
+document.querySelectorAll('.trigger-ring-pulse').forEach(btn => {
+  btn.onclick = () => triggerManualBell({ action: 'ring', duration_sec: 3, ring_pattern: 'pulsed', pulse_count: 3, pulse_gap_sec: 1 });
+});
 
-const emergencyBtn = document.getElementById('emergencyRingBtn');
-if (emergencyBtn) {
-  emergencyBtn.onclick = () => {
+document.querySelectorAll('.trigger-ring-emergency').forEach(btn => {
+  btn.onclick = () => {
     if (!confirm('🚨 DIQQAT: Favqulodda trevoga signali 30 soniya davomida uzluksiz chalinadi! Tasdiqlaysizmi?')) return;
     triggerManualBell({ action: 'ring', duration_sec: 30, ring_pattern: 'continuous' });
   };
-}
+});
 
-const stopRingBtn = document.getElementById('stopRingBtn');
-if (stopRingBtn) {
-  stopRingBtn.onclick = () => {
-    triggerManualBell({ action: 'stop' });
-  };
-}
+document.querySelectorAll('.trigger-ring-stop').forEach(btn => {
+  btn.onclick = () => triggerManualBell({ action: 'stop' });
+});
 
 // ============================================================
 // USERS MANAGEMENT (ADMIN & USER)
