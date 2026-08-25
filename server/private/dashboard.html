@@ -115,12 +115,25 @@
           </div>
         </div>
         <div class="tabs" id="dayTabs"></div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0 16px 0; padding:10px 14px; background:rgba(0,0,0,0.03); border:1px solid var(--border, #e4e4e7); border-radius:8px;">
-          <span style="font-size:12px; font-weight:600; color:var(--text-muted);">⚡ Shablon yuklash:</span>
-          <button class="btn btn-ghost btn-sm" id="tpl1SmenaBtn">🌅 1-Smena (8:00 - 13:00)</button>
-          <button class="btn btn-ghost btn-sm" id="tpl2SmenaBtn">🌇 2-Smena (13:30 - 18:30)</button>
-          <button class="btn btn-ghost btn-sm" id="tplShortDayBtn">⏱️ Qisqartirilgan (35 min)</button>
-          <button class="btn btn-ghost btn-sm" id="tplClearDayBtn" style="color:var(--danger, #DC2626); margin-left:auto;">🗑️ Tozalash</button>
+        <div style="margin:12px 0 16px 0; padding:12px 14px; background:rgba(0,0,0,0.03); border:1px solid var(--border, #e4e4e7); border-radius:8px;">
+          <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px;">
+            <span style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">⚡ Tezkor Shablonlar</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn btn-ghost btn-sm" id="saveAsTemplateBtn" style="color:var(--primary); font-weight:600;" title="Hozirgi kun jadvalini yangi shablon sifatida saqlab qo'yish">
+                💾 Ushbu kunni shablon qilish
+              </button>
+              <button class="btn btn-ghost btn-sm" id="tplClearDayBtn" style="color:var(--danger, #DC2626);">
+                🗑️ Tozalash
+              </button>
+            </div>
+          </div>
+
+          <div id="templatesListBar" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" id="tpl1SmenaBtn">🌅 1-Smena</button>
+            <button class="btn btn-ghost btn-sm" id="tpl2SmenaBtn">🌇 2-Smena</button>
+            <button class="btn btn-ghost btn-sm" id="tplShortDayBtn">⏱️ Qisqartirilgan (35 min)</button>
+            <span id="customTemplatesContainer" style="display:inline-flex; gap:6px; flex-wrap:wrap;"></span>
+          </div>
         </div>
         <div id="dayList"></div>
         <div class="list-empty" id="dayEmpty">

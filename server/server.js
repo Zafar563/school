@@ -16,7 +16,8 @@ const {
   setPendingCommand, popPendingCommand,
   updateUserDeviceStatus, updateUserCustomCoords,
   getUserMuteState, setUserMuteState, getAllDevicesStatus,
-  addAuditLog, getAuditLog
+  addAuditLog, getAuditLog,
+  getTemplates, createTemplate, deleteTemplate
 } = require('./db');
 const { runMigrations } = require('./migrate');
 const { initTelegramBot } = require('./telegram');
@@ -265,6 +266,45 @@ app.post('/api/admin/schedule/day', requireLogin, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: 'Jadvalni saqlashda xato' });
+  }
+});
+
+// ---------- MAXSUS SHABLONLAR (CUSTOM TEMPLATES / PRESETS) ----------
+app.get('/api/admin/templates', requireLogin, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req);
+    const list = await getTemplates(targetUserId);
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: 'Shablonlarni yuklashda xato' });
+  }
+});
+
+app.post('/api/admin/templates', requireLogin, async (req, res) => {
+  const { name, items, userId } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Shablon nomini kiriting' });
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Shablonda kamida bitta qo\'ng\'iroq vaqti bo\'lishi kerak' });
+  }
+  try {
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    const tpl = await createTemplate(targetUserId, name.trim(), items);
+    await addAuditLog(req.session.username, 'create_template', `"${name.trim()}" (${items.length} ta vaqt)`);
+    res.json({ ok: true, template: tpl });
+  } catch (e) {
+    res.status(500).json({ error: 'Shablonni saqlashda xato' });
+  }
+});
+
+app.delete('/api/admin/templates/:id', requireLogin, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req);
+    const ok = await deleteTemplate(targetUserId, req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Shablon topilmadi' });
+    await addAuditLog(req.session.username, 'delete_template', `ID: ${req.params.id}`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Shablonni o\'chirishda xato' });
   }
 });
 

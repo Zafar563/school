@@ -377,6 +377,7 @@ function loadSchedule() {
     scheduleData = data;
     refreshDayView();
   }).catch(() => toast('Jadvalni yuklashda xato', 'error'));
+  loadCustomTemplates();
 }
 
 function saveDay() {
@@ -400,7 +401,7 @@ document.getElementById('addRowBtn').onclick = () => addRow('day');
 document.getElementById('saveDayBtn').onclick = saveDay;
 
 // ============================================================
-// PRESET TEMPLATES
+// PRESET & CUSTOM TEMPLATES
 // ============================================================
 const PRESET_TEMPLATES = {
   shift1: [
@@ -447,6 +448,8 @@ const PRESET_TEMPLATES = {
   ]
 };
 
+let userCustomTemplates = [];
+
 function applyPreset(tplKey) {
   if (!PRESET_TEMPLATES[tplKey]) return;
   if (!confirm(`Hozirgi ${DAY_NAMES[currentDay]} jadvaliga ushbu shablonni yuklamoqchimisiz?`)) return;
@@ -470,6 +473,82 @@ if (tplClearBtn) {
     if (!confirm(`${DAY_NAMES[currentDay]} jadvalidagi barcha vaqtlarni tozalashni tasdiqlaysizmi?`)) return;
     renderList('day', []);
     toast('Jadval tozalandi. "Saqlash" tugmasini bosing ✓');
+  };
+}
+
+// MAXSUS FOYDALANUVCHI SHABLONLARI
+function loadCustomTemplates() {
+  const targetId = getActiveScheduleUserId();
+  const url = targetId ? `/api/admin/templates?userId=${targetId}` : '/api/admin/templates';
+  fetch(url).then(r => r.json()).then(list => {
+    userCustomTemplates = Array.isArray(list) ? list : [];
+    renderCustomTemplatesUI();
+  }).catch(() => {});
+}
+
+function renderCustomTemplatesUI() {
+  const box = document.getElementById('customTemplatesContainer');
+  if (!box) return;
+  if (!userCustomTemplates.length) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = userCustomTemplates.map(t => `
+    <div style="display:inline-flex; align-items:center; background:var(--bg-card, #fff); border:1px solid var(--border, #e4e4e7); border-radius:6px; overflow:hidden;">
+      <button class="btn btn-ghost btn-sm" onclick="applyCustomTemplate(${t.id})" style="border:none; padding:4px 8px; font-size:12px; font-weight:500;">
+        📁 ${t.name} <span style="font-size:10px; color:var(--text-muted); opacity:0.8;">(${t.items.length})</span>
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="deleteCustomTemplate(${t.id}, '${(t.name || '').replace(/'/g, "\\'")}')" style="border:none; border-left:1px solid var(--border); padding:4px 6px; color:var(--danger, #DC2626); font-size:11px;" title="Shablonni o'chirish">
+        ✕
+      </button>
+    </div>
+  `).join('');
+}
+
+window.applyCustomTemplate = function(templateId) {
+  const t = userCustomTemplates.find(x => x.id === templateId);
+  if (!t) return;
+  if (!confirm(`Hozirgi ${DAY_NAMES[currentDay]} jadvaliga "${t.name}" shablonini yuklamoqchimisiz?`)) return;
+  renderList('day', JSON.parse(JSON.stringify(t.items)));
+  toast(`"${t.name}" shabloni yuklandi. "Saqlash" tugmasini bosing ✓`);
+};
+
+window.deleteCustomTemplate = function(templateId, name) {
+  if (!confirm(`"${name}" maxsus shablonini o'chirishni tasdiqlaysizmi?`)) return;
+  fetch(`/api/admin/templates/${templateId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        toast('Shablon o\'chirildi ✓');
+        loadCustomTemplates();
+      } else {
+        toast(d.error || 'Xato', 'error');
+      }
+    }).catch(() => toast('Server bilan aloqada xato', 'error'));
+};
+
+const saveAsTemplateBtn = document.getElementById('saveAsTemplateBtn');
+if (saveAsTemplateBtn) {
+  saveAsTemplateBtn.onclick = () => {
+    const items = collectRows('day');
+    if (!items || items.length === 0) {
+      toast('Shablon yaratish uchun kamida bitta qo\'ng\'iroq vaqti qo\'shilgan bo\'lishi kerak', 'error');
+      return;
+    }
+    const name = prompt('Ushbu kun jadvali uchun yangi shablon nomini kiriting (masalan: "Juma qisqa darslar" yoki "Imtihon rejimi"):');
+    if (!name || !name.trim()) return;
+
+    const targetId = getActiveScheduleUserId();
+    fetch('/api/admin/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim(), items, userId: targetId })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+      toast(`"${name.trim()}" shabloni muvaffaqiyatli saqlandi ✓`);
+      loadCustomTemplates();
+    }).catch(() => toast('Server bilan aloqada xato', 'error'));
   };
 }
 

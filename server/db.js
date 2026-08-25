@@ -296,6 +296,41 @@ async function popPendingCommand(userId) {
   }
 }
 
+// ---------------- SCHEDULE TEMPLATES / PRESETS ----------------
+async function getTemplates(userId) {
+  const uid = parseInt(userId, 10);
+  const { rows } = await pool.query(
+    'SELECT id, name, items, created_at FROM schedule_templates WHERE user_id = $1 ORDER BY id ASC',
+    [uid]
+  );
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    items: Array.isArray(r.items) ? r.items : []
+  }));
+}
+
+async function createTemplate(userId, name, items) {
+  const uid = parseInt(userId, 10);
+  const cleanName = (name || 'Yangi shablon').trim();
+  const cleanItems = Array.isArray(items) ? items : [];
+  const { rows } = await pool.query(
+    'INSERT INTO schedule_templates (user_id, name, items) VALUES ($1, $2, $3::jsonb) RETURNING id, name, items',
+    [uid, cleanName, JSON.stringify(cleanItems)]
+  );
+  return rows[0];
+}
+
+async function deleteTemplate(userId, templateId) {
+  const uid = parseInt(userId, 10);
+  const tid = parseInt(templateId, 10);
+  const res = await pool.query(
+    'DELETE FROM schedule_templates WHERE user_id = $1 AND id = $2',
+    [uid, tid]
+  );
+  return res.rowCount > 0;
+}
+
 module.exports = {
   pool, initDb,
   findUserByUsername, findUserById, findUserByApiKey,
@@ -307,5 +342,6 @@ module.exports = {
   setPendingCommand, popPendingCommand,
   updateUserDeviceStatus, updateUserCustomCoords,
   getUserMuteState, setUserMuteState, getAllDevicesStatus,
-  addAuditLog, getAuditLog
+  addAuditLog, getAuditLog,
+  getTemplates, createTemplate, deleteTemplate
 };
