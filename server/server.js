@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
 const {
+  pool,
   initDb,
   findUserByUsername, findUserById, findUserByApiKey, createUser, updateUserPassword,
   regenerateUserApiKey, getAllUsers, deleteUser,
@@ -15,6 +16,7 @@ const {
   addAuditLog, getAuditLog
 } = require('./db');
 const { initTelegramBot } = require('./telegram');
+const pgSession = require('connect-pg-simple')(session);
 
 // Server birinchi marta ishga tushganda standart adminni avtomatik yaratish
 async function ensureDefaultAdmin() {
@@ -48,14 +50,19 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 
 app.use(express.json());
 
-// Sessiya middleware'i
+// Sessiya middleware'i (PostgreSQL sessiya saqlagichi orqali doimiy va ishonchli)
 app.use(session({
+  store: new pgSession({
+    pool: pool,
+    tableName: 'session',
+    createTableIfMissing: true
+  }),
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 12, // 12 soat
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 kun
     secure: process.env.COOKIE_SECURE === 'true'
   }
 }));
@@ -66,7 +73,18 @@ app.get('/dashboard.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'private', 'dashboard.html'));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Statik fayllarni keshlamaslik (deploy qilganda eski versiya ko'rsatmaslik uchun)
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    }
+  }
+}));
+
 
 // ---------- LOGINGA TEGISHLI MIDDLEWARE ----------
 function requireLogin(req, res, next) {
@@ -79,8 +97,18 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Bu bo\'lim uchun ruxsatingiz yo\'q' });
 }
 
-// Oddiy brute-force cheklovi (xotirada, sodda)
+// Oddiy brute-force cheklovi (xotirada)
 const loginAttempts = {};
+// Har 30 daqiqada eski IP urinishlarni tozalash (Memory leak oldini olish)
+setInterval(() => {
+  const now = Date.now();
+  for (const ip in loginAttempts) {
+    if (now - loginAttempts[ip].first > 15 * 60 * 1000) {
+      delete loginAttempts[ip];
+    }
+  }
+}, 30 * 60 * 1000);
+
 function rateLimitLogin(req, res, next) {
   const ip = req.ip;
   const now = Date.now();
@@ -106,11 +134,16 @@ app.post('/api/login', rateLimitLogin, async (req, res) => {
       return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
     }
 
-    req.session.userId = user.id;
-    req.session.username = user.username;
-    req.session.role = user.role || 'admin';
-    await addAuditLog(username, 'login_success');
-    res.json({ ok: true, username: user.username });
+    req.session.regenerate(async (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Sessiya yaratishda xato' });
+      }
+      req.session.userId = user.id;
+      req.session.username = user.username;
+      req.session.role = user.role || 'admin';
+      await addAuditLog(username, 'login_success');
+      res.json({ ok: true, username: user.username });
+    });
   } catch (err) {
     res.status(500).json({ error: 'Server xatosi' });
   }
@@ -568,7 +601,9 @@ app.get('/api/device/schedule', requireDeviceKey, async (req, res) => {
     // Agar darhol chalish buyrug'i berilgan bo'lsa
     const cmd = await popPendingCommand();
     if (cmd) {
-      if (Date.now() - (cmd.created_at || Date.now()) < 60 * 1000) {
+      const createdAtMs = cmd.created_at ? new Date(cmd.created_at).getTime() : Date.now();
+      // Faqat oxirgi 2 daqiqa ichida yuborilgan yangi buyruqlarni ijro etish
+      if (Date.now() - createdAtMs < 2 * 60 * 1000) {
         payload.command = cmd;
       }
     }

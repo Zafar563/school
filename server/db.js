@@ -225,7 +225,8 @@ async function popPendingCommand() {
     const item = rows[0];
     await client.query('DELETE FROM pending_commands WHERE id = $1', [item.id]);
     await client.query('COMMIT');
-    return item.command;
+    const cmdData = typeof item.command === 'object' && item.command !== null ? item.command : {};
+    return { ...cmdData, created_at: item.created_at };
   } catch (e) {
     await client.query('ROLLBACK');
     return null;
