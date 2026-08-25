@@ -853,11 +853,49 @@ function loadUsers() {
   }).catch(() => toast('Foydalanuvchilarni yuklashda xato', 'error'));
 }
 
+function copyToClipboard(text, successMsg = 'Nusxalandi ✓') {
+  if (!text) { toast('Nusxalash uchun matn yo\'q', 'error'); return; }
+
+  // 1. Agar navigator.clipboard mavjud va ruxsat berilgan bo'lsa
+  if (navigator.clipboard && (window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast(successMsg);
+    }).catch(() => {
+      fallbackCopyText(text, successMsg);
+    });
+  } else {
+    // 2. HTTP yoki qo'llab-quvvatlamaydigan brauzerlar uchun universal fallback
+    fallbackCopyText(text, successMsg);
+  }
+}
+
+function fallbackCopyText(text, successMsg) {
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.top = '-9999px';
+    textArea.style.left = '-9999px';
+    textArea.style.opacity = '0';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, 99999); // Mobile uchun
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (successful) {
+      toast(successMsg);
+    } else {
+      prompt('API kalitdan nusxa oling (Ctrl+C):', text);
+    }
+  } catch (err) {
+    prompt('API kalitdan nusxa oling (Ctrl+C):', text);
+  }
+}
+
 window.copyUserApiKey = function(key) {
-  if (!key) { toast('Kalit mavjud emas', 'error'); return; }
-  navigator.clipboard.writeText(key)
-    .then(() => toast('ESP32 API kalit nusxalandi ✓'))
-    .catch(() => toast('Nusxalab bo\'lmadi', 'error'));
+  copyToClipboard(key, 'ESP32 API kalit nusxalandi ✓');
 };
 
 window.regenerateUserKey = function(id, username) {
