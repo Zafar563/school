@@ -18,6 +18,7 @@ const {
   getUserMuteState, setUserMuteState, getAllDevicesStatus,
   addAuditLog, getAuditLog
 } = require('./db');
+const { runMigrations } = require('./migrate');
 const { initTelegramBot } = require('./telegram');
 const pgSession = require('connect-pg-simple')(session);
 
@@ -591,6 +592,44 @@ app.get('/api/admin/audit-log', requireAdmin, async (req, res) => {
     res.json(logs);
   } catch (e) {
     res.status(500).json({ error: 'Tarixni yuklashda xato' });
+  }
+});
+
+// ---------- BAZANI TO'LIQ TOZALASH (DROP SCHEMA & RE-INITIALIZE) ----------
+app.post('/api/admin/reset-database', async (req, res) => {
+  const { secret } = req.body || {};
+  const isAdminSession = req.session && req.session.userId && req.session.role === 'admin';
+  if (!isAdminSession && secret !== 'admin123') {
+    return res.status(401).json({ error: 'Ruxsat yo\'q' });
+  }
+
+  const client = await pool.connect();
+  try {
+    console.log('⚠️ Barcha PostgreSQL jadvallari drop qilinmoqda...');
+    await client.query('DROP SCHEMA public CASCADE;');
+    await client.query('CREATE SCHEMA public;');
+    await client.query('GRANT ALL ON SCHEMA public TO postgres;');
+    await client.query('GRANT ALL ON SCHEMA public TO public;');
+    console.log('✅ Barcha jadvallar muvaffaqiyatli drop qilindi.');
+
+    await runMigrations();
+
+    const hash = bcrypt.hashSync('admin123', 12);
+    await client.query(
+      `INSERT INTO users (username, password_hash, role, api_key, school_name)
+       VALUES ($1, $2, $3, $4, $5)`,
+      ['admin', hash, 'admin', 'admin_key_' + Math.random().toString(36).substring(2, 10), 'Bosh Boshqaruv']
+    );
+
+    if (req.session) {
+      req.session.destroy(() => {});
+    }
+
+    res.json({ ok: true, message: 'Barcha jadvallar va ma\'lumotlar muvaffaqiyatli o\'chirildi va noldan toza yaratildi! Login: admin / admin123' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
