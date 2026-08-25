@@ -996,3 +996,20 @@ body {
 [data-theme="dark"] .leaflet-container {
   background: #111827;
 }
+
+/* ============================================================
+   ROLE-BASED DISPLAY RESTRICTIONS
+   ============================================================ */
+body.is-user .admin-only {
+  display: none !important;
+}
+
+body.is-admin .admin-only {
+  display: revert;
+}
+
+body.is-admin a.admin-only,
+body.is-admin button.admin-only {
+  display: inline-flex !important;
+}
+

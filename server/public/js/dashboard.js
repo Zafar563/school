@@ -74,6 +74,31 @@ if (saveSchoolNameBtn) {
 
 let currentUserApiKey = '';
 
+function applyRoleVisibility(role) {
+  const admin = role === 'admin';
+  document.body.classList.remove('is-admin', 'is-user');
+  document.body.classList.add(admin ? 'is-admin' : 'is-user');
+
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = admin ? '' : 'none';
+  });
+
+  const roleLabel = document.getElementById('userRoleLabel');
+  if (roleLabel) {
+    roleLabel.textContent = admin ? '👑 Administrator' : '👤 Foydalanuvchi';
+    roleLabel.style.color = admin ? 'var(--primary)' : 'var(--success)';
+  }
+
+  // Agar oddiy user admin-only tabda turgan bo'lsa, uni jadvalga qaytarish
+  if (!admin) {
+    const activeTab = document.querySelector('.sidebar nav a.active');
+    if (activeTab && activeTab.classList.contains('admin-only')) {
+      const scheduleTab = document.querySelector('.sidebar nav a[data-tab="schedule"]');
+      if (scheduleTab) scheduleTab.click();
+    }
+  }
+}
+
 // ============================================================
 // AUTH
 // ============================================================
@@ -82,12 +107,7 @@ fetch('/api/me').then(r => r.json()).then(d => {
   document.getElementById('userLabel').textContent = d.username;
   currentRole = d.role || 'user';
   currentUserApiKey = d.apiKey || '';
-  document.getElementById('userRoleLabel').textContent = isAdmin() ? 'Administrator' : 'Foydalanuvchi';
-  if (!isAdmin()) {
-    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-  } else {
-    document.querySelectorAll('.user-only').forEach(el => el.style.display = 'none');
-  }
+  applyRoleVisibility(currentRole);
   startDevicePolling();
   loadSchedule();
   loadMuteState();

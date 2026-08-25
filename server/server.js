@@ -163,11 +163,15 @@ app.get('/api/me', async (req, res) => {
   if (req.session && req.session.userId) {
     try {
       const user = await findUserById(req.session.userId);
+      if (!user) {
+        req.session.destroy(() => {});
+        return res.json({ loggedIn: false });
+      }
       return res.json({
         loggedIn: true,
-        username: req.session.username,
-        role: req.session.role || 'admin',
-        apiKey: (user && user.api_key) || ''
+        username: user.username,
+        role: user.role || 'user',
+        apiKey: user.api_key || ''
       });
     } catch (e) {
       return res.json({ loggedIn: false });
