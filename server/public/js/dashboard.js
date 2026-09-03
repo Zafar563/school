@@ -229,14 +229,28 @@ async function loadSchoolDropdowns() {
         hSelect.value = allUsersList[0].id;
       }
     }
+
+    const dSelect = document.getElementById('adminDeviceUserSelect');
+    if (dSelect) {
+      const prev = dSelect.value;
+      dSelect.innerHTML = options;
+      if (prev && allUsersList.some(u => String(u.id) === String(prev))) {
+        dSelect.value = prev;
+      } else if (allUsersList[0]) {
+        dSelect.value = allUsersList[0].id;
+      }
+    }
   } catch (e) {}
 }
 
 const adminScheduleSelect = document.getElementById('adminScheduleUserSelect');
 if (adminScheduleSelect) {
   adminScheduleSelect.onchange = () => {
+    const val = adminScheduleSelect.value;
     const hSelect = document.getElementById('adminHolidayUserSelect');
-    if (hSelect && adminScheduleSelect.value) hSelect.value = adminScheduleSelect.value;
+    const dSelect = document.getElementById('adminDeviceUserSelect');
+    if (hSelect) hSelect.value = val;
+    if (dSelect) dSelect.value = val;
     loadSchedule();
     loadMuteState();
     loadCustomTemplates();
@@ -247,9 +261,24 @@ if (adminScheduleSelect) {
 const adminHolidaySelect = document.getElementById('adminHolidayUserSelect');
 if (adminHolidaySelect) {
   adminHolidaySelect.onchange = () => {
+    const val = adminHolidaySelect.value;
     const sSelect = document.getElementById('adminScheduleUserSelect');
-    if (sSelect && adminHolidaySelect.value) sSelect.value = adminHolidaySelect.value;
+    const dSelect = document.getElementById('adminDeviceUserSelect');
+    if (sSelect) sSelect.value = val;
+    if (dSelect) dSelect.value = val;
     loadHolidays();
+  };
+}
+
+const adminDeviceSelect = document.getElementById('adminDeviceUserSelect');
+if (adminDeviceSelect) {
+  adminDeviceSelect.onchange = () => {
+    const val = adminDeviceSelect.value;
+    const sSelect = document.getElementById('adminScheduleUserSelect');
+    const hSelect = document.getElementById('adminHolidayUserSelect');
+    if (sSelect) sSelect.value = val;
+    if (hSelect) hSelect.value = val;
+    pollDeviceStatus();
   };
 }
 
@@ -257,6 +286,8 @@ function getActiveScheduleUserId() {
   if (isAdmin()) {
     const s = document.getElementById('adminScheduleUserSelect');
     if (s && s.value) return s.value;
+    const d = document.getElementById('adminDeviceUserSelect');
+    if (d && d.value) return d.value;
     const h = document.getElementById('adminHolidayUserSelect');
     if (h && h.value) return h.value;
   }
@@ -269,6 +300,8 @@ function getActiveHolidayUserId() {
     if (h && h.value) return h.value;
     const s = document.getElementById('adminScheduleUserSelect');
     if (s && s.value) return s.value;
+    const d = document.getElementById('adminDeviceUserSelect');
+    if (d && d.value) return d.value;
   }
   return null;
 }
@@ -637,7 +670,10 @@ function initDeviceMap() {
 }
 
 function pollDeviceStatus() {
-  fetch('/api/admin/device-status').then(r => r.json()).then(d => {
+  const targetId = getActiveScheduleUserId();
+  const url = (isAdmin() && targetId) ? `/api/admin/device-status?userId=${targetId}` : '/api/admin/device-status';
+
+  fetch(url).then(r => r.json()).then(d => {
     const scene = document.getElementById('connScene');
     const badgeDot = document.getElementById('connBadgeDot');
     const sideDot = document.getElementById('deviceDot');
@@ -660,24 +696,22 @@ function pollDeviceStatus() {
       sideDot.classList.toggle('offline', d.online === false);
     }
 
+    const schoolLabel = d.schoolName || d.username || 'Tanlangan maktab';
     if (badge) {
       if (d.online === true) {
-        badge.textContent = 'ESP32 ulangan va ishlayapti';
-        badge.style.color = 'var(--success)';
+        badge.innerHTML = `<b>${schoolLabel}</b>: <span style="color:var(--success)">🟢 ESP32 onlayn va ulangan</span>`;
       } else if (!d.lastSeen) {
-        badge.textContent = 'Hali ulanmagan';
-        badge.style.color = 'var(--text-muted)';
+        badge.innerHTML = `<b>${schoolLabel}</b>: <span style="color:var(--text-muted)">⚪ Hali ulanmagan</span>`;
       } else {
-        badge.textContent = 'ESP32 oflayn';
-        badge.style.color = 'var(--danger)';
+        badge.innerHTML = `<b>${schoolLabel}</b>: <span style="color:var(--danger)">🔴 ESP32 oflayn</span>`;
       }
     }
 
     if (linkLabel) {
       if (d.online === true) {
-        linkLabel.textContent = 'jadval so\'rovi → har 2 daqiqada';
+        linkLabel.textContent = 'Real-time WebSocket & jadval faol';
       } else if (d.lastSeen) {
-        linkLabel.textContent = 'aloqa yo\'q';
+        linkLabel.textContent = 'aloqa uzilgan';
       } else {
         linkLabel.textContent = 'so\'rov yo\'q';
       }
@@ -689,7 +723,7 @@ function pollDeviceStatus() {
 
     if (detail) {
       if (!d.lastSeen) {
-        detail.textContent = 'Qurilma serverga hali bir marta ham bog\'lanmagan.';
+        detail.textContent = `${schoolLabel} qurilmasi serverga hali bir marta ham bog'lanmagan.`;
       } else {
         const rel = relativeTime(d.lastSeen);
         detail.textContent = `Oxirgi aloqa: ${rel}  ·  IP: ${d.lastIp || '—'}`;
@@ -697,7 +731,7 @@ function pollDeviceStatus() {
     }
 
     if (deviceWasOnline !== null && deviceWasOnline !== d.online) {
-      toast(d.online ? '📶 Qurilma ulandi' : '⚠️ Qurilma aloqasi uzildi');
+      toast(d.online ? `📶 ${schoolLabel} qurilmasi ulandi` : `⚠️ ${schoolLabel} qurilmasi aloqasi uzildi`);
     }
     deviceWasOnline = d.online;
 
@@ -705,7 +739,56 @@ function pollDeviceStatus() {
       updateDeviceMap(d.geo, d.online, d.schoolName || d.username);
     }
   }).catch(() => {});
+
+  // Agar admin bo'lsa, barcha maktablar monitoring jadvalini yuklash
+  if (isAdmin()) {
+    fetch('/api/admin/device-status?all=true').then(r => r.json()).then(res => {
+      const tbody = document.getElementById('allDevicesList');
+      if (!tbody || !res || !Array.isArray(res.devices)) return;
+      tbody.innerHTML = res.devices.map(u => {
+        const isOnline = !!u.last_seen && (Date.now() - new Date(u.last_seen).getTime()) < 3 * 60 * 1000;
+        const rel = u.last_seen ? relativeTime(u.last_seen) : 'ulanmagan';
+        const geoText = u.geo ? `${u.geo.city || ''} (${u.geo.isp || ''})` : '—';
+        return `<tr>
+          <td><b>${u.school_name || u.username}</b></td>
+          <td><span class="mono">@${u.username}</span></td>
+          <td>
+            <span class="conn-badge" style="padding:3px 8px; font-size:11px; background:${isOnline ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'}; color:${isOnline ? '#059669' : '#DC2626'}; border:1px solid ${isOnline ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}">
+              ${isOnline ? '🟢 Onlayn' : '🔴 Oflayn'}
+            </span>
+          </td>
+          <td class="mono" style="font-size:12px;">${rel}</td>
+          <td><code class="mono" style="font-size:11px;">${u.last_ip || '—'}</code></td>
+          <td style="font-size:12px;">${geoText}</td>
+          <td>
+            <span style="font-size:12px; font-weight:600; color:${u.bell_muted ? 'var(--danger)' : 'var(--success)'}">
+              ${u.bell_muted ? '🔕 O\'chirilgan' : '🔔 Faol'}
+            </span>
+          </td>
+          <td style="text-align:right;">
+            <button class="btn btn-ghost btn-sm" onclick="selectSchoolForAdmin(${u.id})" style="padding:3px 8px; font-size:11px; color:var(--primary); font-weight:600;">
+              Tanlash ➜
+            </button>
+          </td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">Maktablar topilmadi</td></tr>';
+    }).catch(() => {});
+  }
 }
+
+window.selectSchoolForAdmin = function(userId) {
+  const sSelect = document.getElementById('adminScheduleUserSelect');
+  const hSelect = document.getElementById('adminHolidayUserSelect');
+  const dSelect = document.getElementById('adminDeviceUserSelect');
+  if (sSelect) sSelect.value = userId;
+  if (hSelect) hSelect.value = userId;
+  if (dSelect) dSelect.value = userId;
+  loadSchedule();
+  loadMuteState();
+  loadCustomTemplates();
+  pollDeviceStatus();
+  toast('Maktab tanlandi ✓');
+};
 
 function updateDeviceMap(geo, isOnline, title) {
   if (!geo) return;
