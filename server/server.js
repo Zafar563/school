@@ -104,10 +104,13 @@ function requireAdmin(req, res, next) {
 }
 
 function getTargetUserId(req) {
-  if (req.session.role === 'admin' && req.query.userId) {
-    return parseInt(req.query.userId, 10);
+  if (req.session && req.session.role === 'admin') {
+    const raw = (req.query && req.query.userId) || (req.body && req.body.userId) || (req.params && req.params.userId);
+    if (raw && !isNaN(parseInt(raw, 10))) {
+      return parseInt(raw, 10);
+    }
   }
-  return req.session.userId;
+  return req.session ? req.session.userId : null;
 }
 
 // Oddiy brute-force cheklovi (15 soniya)

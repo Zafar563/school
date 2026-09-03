@@ -113,7 +113,7 @@ function applyRoleVisibility(role) {
 // ============================================================
 // AUTH & INITIALIZATION
 // ============================================================
-fetch('/api/me').then(r => r.json()).then(d => {
+fetch('/api/me').then(r => r.json()).then(async d => {
   if (!d.loggedIn) { window.location.href = '/login.html'; return; }
   currentUserId = d.userId;
   document.getElementById('userLabel').textContent = d.username;
@@ -125,7 +125,7 @@ fetch('/api/me').then(r => r.json()).then(d => {
   }
   applyRoleVisibility(currentRole);
   if (isAdmin()) {
-    loadSchoolDropdowns();
+    await loadSchoolDropdowns();
   }
   startDevicePolling();
   loadSchedule();
@@ -200,22 +200,22 @@ tickClock();
 // ============================================================
 let allUsersList = [];
 
-function loadSchoolDropdowns() {
+async function loadSchoolDropdowns() {
   if (!isAdmin()) return;
-  fetch('/api/admin/users').then(r => r.json()).then(users => {
-    allUsersList = users;
-    const options = users.map(u => `<option value="${u.id}">${u.school_name || u.username} (@${u.username})</option>`).join('');
+  try {
+    const res = await fetch('/api/admin/users');
+    const users = await res.json();
+    allUsersList = Array.isArray(users) ? users : [];
+    const options = allUsersList.map(u => `<option value="${u.id}">🏫 ${u.school_name || u.username} (@${u.username})</option>`).join('');
 
     const sSelect = document.getElementById('adminScheduleUserSelect');
     if (sSelect) {
       const prev = sSelect.value;
       sSelect.innerHTML = options;
-      if (prev && users.some(u => String(u.id) === String(prev))) {
+      if (prev && allUsersList.some(u => String(u.id) === String(prev))) {
         sSelect.value = prev;
-      } else if (currentUserId && users.some(u => String(u.id) === String(currentUserId))) {
-        sSelect.value = currentUserId;
-      } else if (users[0]) {
-        sSelect.value = users[0].id;
+      } else if (allUsersList[0]) {
+        sSelect.value = allUsersList[0].id;
       }
     }
 
@@ -223,27 +223,32 @@ function loadSchoolDropdowns() {
     if (hSelect) {
       const prev = hSelect.value;
       hSelect.innerHTML = options;
-      if (prev && users.some(u => String(u.id) === String(prev))) {
+      if (prev && allUsersList.some(u => String(u.id) === String(prev))) {
         hSelect.value = prev;
-      } else if (currentUserId && users.some(u => String(u.id) === String(currentUserId))) {
-        hSelect.value = currentUserId;
-      } else if (users[0]) {
-        hSelect.value = users[0].id;
+      } else if (allUsersList[0]) {
+        hSelect.value = allUsersList[0].id;
       }
     }
-  }).catch(() => {});
+  } catch (e) {}
 }
 
 const adminScheduleSelect = document.getElementById('adminScheduleUserSelect');
 if (adminScheduleSelect) {
   adminScheduleSelect.onchange = () => {
+    const hSelect = document.getElementById('adminHolidayUserSelect');
+    if (hSelect && adminScheduleSelect.value) hSelect.value = adminScheduleSelect.value;
     loadSchedule();
+    loadMuteState();
+    loadCustomTemplates();
+    pollDeviceStatus();
   };
 }
 
 const adminHolidaySelect = document.getElementById('adminHolidayUserSelect');
 if (adminHolidaySelect) {
   adminHolidaySelect.onchange = () => {
+    const sSelect = document.getElementById('adminScheduleUserSelect');
+    if (sSelect && adminHolidaySelect.value) sSelect.value = adminHolidaySelect.value;
     loadHolidays();
   };
 }
@@ -252,6 +257,8 @@ function getActiveScheduleUserId() {
   if (isAdmin()) {
     const s = document.getElementById('adminScheduleUserSelect');
     if (s && s.value) return s.value;
+    const h = document.getElementById('adminHolidayUserSelect');
+    if (h && h.value) return h.value;
   }
   return null;
 }
@@ -260,6 +267,8 @@ function getActiveHolidayUserId() {
   if (isAdmin()) {
     const h = document.getElementById('adminHolidayUserSelect');
     if (h && h.value) return h.value;
+    const s = document.getElementById('adminScheduleUserSelect');
+    if (s && s.value) return s.value;
   }
   return null;
 }
@@ -515,7 +524,9 @@ window.applyCustomTemplate = function(templateId) {
 
 window.deleteCustomTemplate = function(templateId, name) {
   if (!confirm(`"${name}" maxsus shablonini o'chirishni tasdiqlaysizmi?`)) return;
-  fetch(`/api/admin/templates/${templateId}`, { method: 'DELETE' })
+  const targetId = getActiveScheduleUserId();
+  const url = `/api/admin/templates/${templateId}` + (targetId ? '?userId=' + targetId : '');
+  fetch(url, { method: 'DELETE' })
     .then(r => r.json())
     .then(d => {
       if (d.ok) {
@@ -567,17 +578,20 @@ function applyMuteVisual() {
 }
 
 function loadMuteState() {
-  fetch('/api/admin/mute').then(r => r.json()).then(d => {
+  const targetId = getActiveScheduleUserId();
+  const url = (isAdmin() && targetId) ? `/api/admin/mute?userId=${targetId}` : '/api/admin/mute';
+  fetch(url).then(r => r.json()).then(d => {
     isMuted = d.muted;
     applyMuteVisual();
   });
 }
 
 document.getElementById('muteSwitch').onclick = () => {
+  const targetId = getActiveScheduleUserId();
   fetch('/api/admin/mute', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ muted: !isMuted })
+    body: JSON.stringify({ muted: !isMuted, userId: targetId })
   }).then(r => r.json()).then(d => {
     isMuted = d.muted;
     applyMuteVisual();
@@ -892,7 +906,9 @@ function loadHolidays() {
 
 window.deleteHoliday = function(id) {
   if (!confirm('Ushbu bayram sanasini o\'chirmoqchimisiz?')) return;
-  fetch('/api/admin/holidays/' + id, { method: 'DELETE' })
+  const targetId = getActiveHolidayUserId();
+  const url = '/api/admin/holidays/' + id + (targetId ? '?userId=' + targetId : '');
+  fetch(url, { method: 'DELETE' })
     .then(r => r.json())
     .then(d => {
       if (d.ok) {
@@ -950,10 +966,13 @@ document.querySelectorAll('#quickHolidays button').forEach(btn => {
 // MANUAL & EMERGENCY BELL TRIGGER
 // ============================================================
 function triggerManualBell(opts) {
+  const targetId = getActiveScheduleUserId();
+  const payload = { ...opts };
+  if (targetId) payload.userId = targetId;
   fetch('/api/admin/trigger-bell', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(opts)
+    body: JSON.stringify(payload)
   }).then(async r => {
     const d = await r.json();
     if (!r.ok) { toast(d.error || 'Xato', 'error'); return; }
