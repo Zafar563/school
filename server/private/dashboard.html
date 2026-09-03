@@ -6,7 +6,30 @@
 <title>Boshqaruv paneli</title>
 <link rel="stylesheet" href="/css/style.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  /* Boshlang'ich holatda admin elementlari 100% yashirin bo'ladi (Bir zum ko'rinib yo'qolishning oldini oladi) */
+  .admin-only {
+    display: none !important;
+  }
+  body.is-admin .admin-only {
+    display: revert !important;
+  }
+  body.is-admin tr.admin-only {
+    display: table-row !important;
+  }
+  body.is-admin div.admin-only {
+    display: flex !important;
+  }
+  body.is-admin a.admin-only {
+    display: flex !important;
+  }
+  body.is-admin button.admin-only {
+    display: inline-flex !important;
+  }
+  body.is-admin .card.admin-only {
+    display: block !important;
+  }
+</style>
 <script>
   (function() {
     const saved = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

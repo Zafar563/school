@@ -74,10 +74,20 @@ app.use(session({
   }
 }));
 
-// dashboard.html himoyalangan bo'lishi kerak
+const fs = require('fs');
+
+// dashboard.html himoyalangan va server-render qilingan
 app.get('/dashboard.html', (req, res) => {
   if (!req.session || !req.session.userId) return res.redirect('/login.html');
-  res.sendFile(path.join(__dirname, 'private', 'dashboard.html'));
+  const role = req.session.role === 'admin' ? 'admin' : 'user';
+  const filePath = path.join(__dirname, 'private', 'dashboard.html');
+  fs.readFile(filePath, 'utf8', (err, html) => {
+    if (err) return res.status(500).send('Server xatosi');
+    const rendered = html.replace('<body>', `<body class="is-${role}">`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.send(rendered);
+  });
 });
 
 // Statik fayllarni keshlamaslik (deploy qilganda eski versiya ko'rsatmaslik uchun)
