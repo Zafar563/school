@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Boshqaruv paneli</title>
 <link rel="stylesheet" href="/css/style.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   /* Boshlang'ich holatda admin elementlari 100% yashirin bo'ladi (Bir zum ko'rinib yo'qolishning oldini oladi) */
   .admin-only {
@@ -313,48 +312,6 @@
         </div>
       </div>
 
-      <!-- GEOLOCATION & MAP CARD -->
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-          <div>
-            <h2 style="margin:0;">ESP32 Joylashuvi & Jonli Xarita</h2>
-            <p class="hint" style="margin:4px 0 0 0;">Qurilma ulangan internet orqali aniqlangan avtomatik geolakatsiya.</p>
-          </div>
-          <span class="conn-badge" id="mapStatusBadge" style="padding:4px 10px; font-size:12px; background:rgba(79,70,229,0.1); color:var(--primary); border-radius:6px;">
-            📍 <span id="mapCityText">Aniqlanmoqda...</span>
-          </span>
-        </div>
-
-        <div class="map-stats-grid">
-          <div class="map-stat-item">
-            <span class="map-stat-label">Shahar / Viloyat</span>
-            <b id="geoCityVal">—</b>
-          </div>
-          <div class="map-stat-item">
-            <span class="map-stat-label">Internet Provayder (ISP)</span>
-            <b id="geoIspVal">—</b>
-          </div>
-          <div class="map-stat-item">
-            <span class="map-stat-label">Koordinatalar</span>
-            <b id="geoCoordsVal" class="mono">—</b>
-          </div>
-          <div class="map-stat-item">
-            <span class="map-stat-label">IP Manzil</span>
-            <b id="geoIpVal" class="mono">—</b>
-          </div>
-        </div>
-
-        <div id="deviceMap" style="width:100%; height:320px; border-radius:12px; border:1px solid var(--border); margin-top:14px; z-index:1;"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px;">
-          <span style="font-size:12px; color:var(--text-muted);">
-            💡 <i>Markerni siljitish orqali xaritada maktab binosi ustiga aniq belgilab qo'yishingiz mumkin.</i>
-          </span>
-          <button class="btn btn-ghost btn-sm admin-only" id="saveLocationBtn" style="padding:4px 10px; font-size:12px; display:none;">
-            💾 Joylashuvni saqlash
-          </button>
-        </div>
-      </div>
-
       <div class="card">
         <h2>Masofadan qo'lda chalish & Favqulodda signal</h2>
         <p class="hint">ESP32 qurilmasiga to'g'ridan-to'g'ri darhol chalish yoki favqulodda signal buyrug'ini yuboring.</p>
@@ -395,7 +352,6 @@
               <th>Holati</th>
               <th>Oxirgi aloqa</th>
               <th>IP Manzil</th>
-              <th>Joylashuv</th>
               <th>Qo'ng'iroq</th>
               <th style="width:130px; text-align:right;">Tezkor amal</th>
             </tr>

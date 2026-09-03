@@ -633,12 +633,9 @@ document.getElementById('muteSwitch').onclick = () => {
 };
 
 // ============================================================
-// DEVICE TAB & MAP (LEAFLET + OPENSTREETMAP)
+// DEVICE TAB & STATUS
 // ============================================================
 let deviceWasOnline = null;
-let deviceMap = null;
-let deviceMarkers = {};
-let customPinnedCoords = null;
 
 function relativeTime(iso) {
   if (!iso) return null;
@@ -649,24 +646,6 @@ function relativeTime(iso) {
   if (min < 60) return `${min} daqiqa oldin`;
   const hr = Math.floor(min / 60);
   return hr < 24 ? `${hr} soat oldin` : new Date(iso).toLocaleString('uz-UZ');
-}
-
-function initDeviceMap() {
-  const mapEl = document.getElementById('deviceMap');
-  if (!mapEl || typeof L === 'undefined' || deviceMap) return false;
-
-  const tabEl = document.getElementById('tab-device');
-  if (tabEl && tabEl.style.display === 'none') return false;
-
-  try {
-    deviceMap = L.map('deviceMap').setView([41.2995, 69.2401], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(deviceMap);
-    return true;
-  } catch (e) {}
-  return false;
 }
 
 function pollDeviceStatus() {
@@ -734,10 +713,6 @@ function pollDeviceStatus() {
       toast(d.online ? `📶 ${schoolLabel} qurilmasi ulandi` : `⚠️ ${schoolLabel} qurilmasi aloqasi uzildi`);
     }
     deviceWasOnline = d.online;
-
-    if (d.geo) {
-      updateDeviceMap(d.geo, d.online, d.schoolName || d.username);
-    }
   }).catch(() => {});
 
   // Agar admin bo'lsa, barcha maktablar monitoring jadvalini yuklash
@@ -748,7 +723,6 @@ function pollDeviceStatus() {
       tbody.innerHTML = res.devices.map(u => {
         const isOnline = !!u.last_seen && (Date.now() - new Date(u.last_seen).getTime()) < 3 * 60 * 1000;
         const rel = u.last_seen ? relativeTime(u.last_seen) : 'ulanmagan';
-        const geoText = u.geo ? `${u.geo.city || ''} (${u.geo.isp || ''})` : '—';
         return `<tr>
           <td><b>${u.school_name || u.username}</b></td>
           <td><span class="mono">@${u.username}</span></td>
@@ -759,7 +733,6 @@ function pollDeviceStatus() {
           </td>
           <td class="mono" style="font-size:12px;">${rel}</td>
           <td><code class="mono" style="font-size:11px;">${u.last_ip || '—'}</code></td>
-          <td style="font-size:12px;">${geoText}</td>
           <td>
             <span style="font-size:12px; font-weight:600; color:${u.bell_muted ? 'var(--danger)' : 'var(--success)'}">
               ${u.bell_muted ? '🔕 O\'chirilgan' : '🔔 Faol'}
@@ -771,7 +744,7 @@ function pollDeviceStatus() {
             </button>
           </td>
         </tr>`;
-      }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">Maktablar topilmadi</td></tr>';
+      }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">Maktablar topilmadi</td></tr>';
     }).catch(() => {});
   }
 }
@@ -790,97 +763,13 @@ window.selectSchoolForAdmin = function(userId) {
   toast('Maktab tanlandi ✓');
 };
 
-function updateDeviceMap(geo, isOnline, title) {
-  if (!geo) return;
-  initDeviceMap();
-
-  const lat = geo.lat || 41.2995;
-  const lon = geo.lon || 69.2401;
-  const city = geo.city || 'Toshkent';
-  const region = geo.region ? ` (${geo.region})` : '';
-  const isp = geo.isp || '—';
-  const ip = geo.ip || '—';
-
-  const cityEl = document.getElementById('geoCityVal');
-  const ispEl = document.getElementById('geoIspVal');
-  const coordsEl = document.getElementById('geoCoordsVal');
-  const ipEl = document.getElementById('geoIpVal');
-  const mapCityText = document.getElementById('mapCityText');
-
-  if (cityEl) cityEl.textContent = `${city}${region}`;
-  if (ispEl) ispEl.textContent = isp;
-  if (coordsEl) coordsEl.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
-  if (ipEl) ipEl.textContent = ip;
-  if (mapCityText) mapCityText.textContent = `${city}`;
-
-  if (deviceMap) {
-    if (!deviceMarkers['main']) {
-      const schoolIcon = L.divIcon({
-        className: 'school-map-pin',
-        html: '<div style="background:#4F46E5; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px rgba(79,70,229,0.5); font-size:16px; border:2px solid white;">🔔</div>',
-        iconSize: [34, 34],
-        iconAnchor: [17, 17]
-      });
-
-      const marker = L.marker([lat, lon], {
-        icon: schoolIcon,
-        draggable: isAdmin()
-      }).addTo(deviceMap);
-
-      if (isAdmin()) {
-        marker.on('dragend', function (e) {
-          const pos = e.target.getLatLng();
-          customPinnedCoords = { lat: pos.lat, lon: pos.lng };
-          const saveBtn = document.getElementById('saveLocationBtn');
-          if (saveBtn) {
-            saveBtn.style.display = 'inline-flex';
-            saveBtn.textContent = `💾 Saqlash (${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)})`;
-          }
-          toast('Yangi nuqta tanlandi. Saqlash uchun tugmani bosing.');
-        });
-      }
-      deviceMarkers['main'] = marker;
-    }
-
-    const marker = deviceMarkers['main'];
-    marker.setLatLng([lat, lon]);
-    marker.bindPopup(`<b>🔔 ${title || currentSchoolName}</b><br>Holati: ${isOnline ? '<span style="color:#059669;font-weight:600">🟢 Onlayn</span>' : '<span style="color:#DC2626;font-weight:600">🔴 Oflayn</span>'}<br>Shahar: ${city}<br>Provayder: ${isp}<br>IP: ${ip}`);
-
-    setTimeout(() => {
-      if (deviceMap) {
-        deviceMap.invalidateSize();
-        deviceMap.panTo([lat, lon]);
-      }
-    }, 200);
-  }
-}
-
-const saveLocationBtn = document.getElementById('saveLocationBtn');
-if (saveLocationBtn) {
-  saveLocationBtn.onclick = () => {
-    if (!customPinnedCoords) return;
-    fetch('/api/admin/device-location', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(customPinnedCoords)
-    }).then(r => r.json()).then(d => {
-      if (d.ok) {
-        toast('Joylashuv muvaffaqiyatli saqlandi ✓');
-        saveLocationBtn.style.display = 'none';
-        pollDeviceStatus();
-      } else {
-        toast(d.error || 'Xatolik', 'error');
-      }
-    }).catch(() => toast('Server bilan aloqada xato', 'error'));
-  };
-}
-
 function loadDevice() {
   pollDeviceStatus();
-  setTimeout(() => {
-    if (!deviceMap) initDeviceMap();
-    if (deviceMap) deviceMap.invalidateSize();
-  }, 300);
+}
+
+function startDevicePolling() {
+  pollDeviceStatus();
+  setInterval(pollDeviceStatus, 8000);
 }
 
 function startDevicePolling() {
