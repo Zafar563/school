@@ -709,6 +709,20 @@ function pollDeviceStatus() {
       }
     }
 
+    // Real-time Header & Sidebar status badges for every user
+    const headerDot = document.getElementById('headerDeviceDot');
+    const headerText = document.getElementById('headerDeviceText');
+    if (headerDot) {
+      headerDot.classList.remove('online', 'offline');
+      if (d.online === true) headerDot.classList.add('online');
+      else if (d.online === false) headerDot.classList.add('offline');
+    }
+    if (headerText) {
+      if (d.online === true) headerText.textContent = 'ESP32: Onlayn';
+      else if (!d.lastSeen) headerText.textContent = 'ESP32: Ulanmagan';
+      else headerText.textContent = 'ESP32: Oflayn';
+    }
+
     if (deviceWasOnline !== null && deviceWasOnline !== d.online) {
       toast(d.online ? `📶 ${schoolLabel} qurilmasi ulandi` : `⚠️ ${schoolLabel} qurilmasi aloqasi uzildi`);
     }
@@ -764,7 +778,30 @@ window.selectSchoolForAdmin = function(userId) {
 };
 
 function loadDevice() {
+  const keyInput = document.getElementById('deviceApiKeyVal');
+  if (keyInput) keyInput.value = currentUserApiKey || 'Kalit topilmadi';
   pollDeviceStatus();
+}
+
+const copyApiKeyBtn = document.getElementById('copyApiKeyBtn');
+if (copyApiKeyBtn) {
+  copyApiKeyBtn.onclick = () => {
+    const key = (document.getElementById('deviceApiKeyVal') || {}).value || currentUserApiKey;
+    if (!key) return;
+    navigator.clipboard.writeText(key).then(() => {
+      toast('API Kalit nusxalandi ✓');
+    }).catch(() => {
+      toast('Nusxalash imkoni bo\'lmadi', 'error');
+    });
+  };
+}
+
+const headerBadgeEl = document.getElementById('headerDeviceBadge');
+if (headerBadgeEl) {
+  headerBadgeEl.onclick = () => {
+    const devTab = document.querySelector('.sidebar nav a[data-tab="device"]');
+    if (devTab) devTab.click();
+  };
 }
 
 function startDevicePolling() {
