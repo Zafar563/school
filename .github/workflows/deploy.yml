@@ -53,16 +53,7 @@ jobs:
             if [ -n "${{ secrets.VPS_ENV }}" ]; then
               echo "${{ secrets.VPS_ENV }}" > /opt/maktab/.env
             elif [ ! -f /opt/maktab/.env ] || [ ! -s /opt/maktab/.env ]; then
-              cat << 'EOF' > /opt/maktab/.env
-PORT=3000
-DATABASE_URL=postgresql://maktab_user:maktab_secure_pass_2026@db:5432/maktab_db
-SESSION_SECRET=super_secret_session_key_maktab_2026
-POSTGRES_USER=maktab_user
-POSTGRES_PASSWORD=maktab_secure_pass_2026
-POSTGRES_DB=maktab_db
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-EOF
+              printf "PORT=3000\nDATABASE_URL=postgresql://maktab_user:maktab_secure_pass_2026@db:5432/maktab_db\nSESSION_SECRET=super_secret_session_key_maktab_2026\nPOSTGRES_USER=maktab_user\nPOSTGRES_PASSWORD=maktab_secure_pass_2026\nPOSTGRES_DB=maktab_db\nPOSTGRES_HOST=db\nPOSTGRES_PORT=5432\n" > /opt/maktab/.env
             fi
 
             # GHCR dan yangi imijni olish uchun login
