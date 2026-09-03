@@ -76,6 +76,14 @@ app.use(session({
 
 const fs = require('fs');
 
+// Bosh sahifaga (/) kirganda avtomatik yo'naltirish
+app.get('/', (req, res) => {
+  if (req.session && req.session.userId) {
+    return res.redirect('/dashboard.html');
+  }
+  return res.redirect('/login.html');
+});
+
 // dashboard.html himoyalangan va server-render qilingan
 app.get('/dashboard.html', (req, res) => {
   if (!req.session || !req.session.userId) return res.redirect('/login.html');
