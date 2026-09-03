@@ -705,7 +705,7 @@ function pollDeviceStatus() {
         detail.textContent = `${schoolLabel} qurilmasi serverga hali bir marta ham bog'lanmagan.`;
       } else {
         const rel = relativeTime(d.lastSeen);
-        detail.textContent = `Oxirgi aloqa: ${rel}  ·  IP: ${d.lastIp || '—'}`;
+        detail.textContent = `Oxirgi aloqa: ${rel}`;
       }
     }
 
@@ -746,7 +746,6 @@ function pollDeviceStatus() {
             </span>
           </td>
           <td class="mono" style="font-size:12px;">${rel}</td>
-          <td><code class="mono" style="font-size:11px;">${u.last_ip || '—'}</code></td>
           <td>
             <span style="font-size:12px; font-weight:600; color:${u.bell_muted ? 'var(--danger)' : 'var(--success)'}">
               ${u.bell_muted ? '🔕 O\'chirilgan' : '🔔 Faol'}
@@ -758,7 +757,7 @@ function pollDeviceStatus() {
             </button>
           </td>
         </tr>`;
-      }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">Maktablar topilmadi</td></tr>';
+      }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px">Maktablar topilmadi</td></tr>';
     }).catch(() => {});
   }
 }
