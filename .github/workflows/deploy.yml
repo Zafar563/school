@@ -47,11 +47,21 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            mkdir -p /opt/maktab
-            cd /opt/maktab
-
-            # .env faylini saqlash
-            echo "${{ secrets.VPS_ENV }}" > /opt/maktab/.env
+            # .env faylini saqlash yoki mavjudini saqlab qolish
+            if [ -n "${{ secrets.VPS_ENV }}" ]; then
+              echo "${{ secrets.VPS_ENV }}" > /opt/maktab/.env
+            elif [ ! -f /opt/maktab/.env ] || [ ! -s /opt/maktab/.env ]; then
+              cat << 'EOF' > /opt/maktab/.env
+PORT=3000
+DATABASE_URL=postgresql://maktab_user:maktab_secure_pass_2026@db:5432/maktab_db
+SESSION_SECRET=super_secret_session_key_maktab_2026
+POSTGRES_USER=maktab_user
+POSTGRES_PASSWORD=maktab_secure_pass_2026
+POSTGRES_DB=maktab_db
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+EOF
+            fi
 
             # GHCR dan yangi imijni olish uchun login
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
