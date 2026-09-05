@@ -137,38 +137,44 @@ document.getElementById('logoutBtn').onclick = () => {
 };
 
 // ============================================================
-// TABS NAVIGATION
+// TABS NAVIGATION (DESKTOP SIDEBAR + MOBILE BOTTOM NAV)
 // ============================================================
-document.querySelectorAll('.sidebar nav a').forEach(a => {
-  a.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
-    a.classList.add('active');
-    const tab = a.dataset.tab;
-    ['schedule', 'holidays', 'device', 'account', 'users', 'log'].forEach(t => {
-      const el = document.getElementById('tab-' + t);
-      if (el) el.style.display = (t === tab) ? '' : 'none';
-    });
-    const titleMap = {
-      schedule: 'Qo\'ng\'iroq jadvali',
-      holidays: 'Bayramlar va ta\'tillar',
-      device: 'Qurilmalar va aloqa',
-      account: 'Hisobim',
-      users: 'Foydalanuvchilar',
-      log: 'Amallar tarixi'
-    };
-    document.getElementById('pageTitle').textContent = titleMap[tab] || '';
-    if (tab === 'schedule') {
-      if (isAdmin()) loadSchoolDropdowns();
-      loadSchedule();
-    }
-    if (tab === 'holidays') {
-      if (isAdmin()) loadSchoolDropdowns();
-      loadHolidays();
-    }
-    if (tab === 'device') loadDevice();
-    if (tab === 'account') loadTelegramConfig();
-    if (tab === 'users') loadUsers();
-    if (tab === 'log') loadLog();
+function switchTab(tab) {
+  document.querySelectorAll('a[data-tab]').forEach(x => {
+    x.classList.toggle('active', x.dataset.tab === tab);
+  });
+  ['schedule', 'holidays', 'device', 'account', 'users', 'log'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = (t === tab) ? '' : 'none';
+  });
+  const titleMap = {
+    schedule: 'Qo\'ng\'iroq jadvali',
+    holidays: 'Bayramlar va ta\'tillar',
+    device: 'Qurilmalar va aloqa',
+    account: 'Hisobim',
+    users: 'Foydalanuvchilar',
+    log: 'Amallar tarixi'
+  };
+  document.getElementById('pageTitle').textContent = titleMap[tab] || '';
+  if (tab === 'schedule') {
+    if (isAdmin()) loadSchoolDropdowns();
+    loadSchedule();
+  }
+  if (tab === 'holidays') {
+    if (isAdmin()) loadSchoolDropdowns();
+    loadHolidays();
+  }
+  if (tab === 'device') loadDevice();
+  if (tab === 'account') loadTelegramConfig();
+  if (tab === 'users') loadUsers();
+  if (tab === 'log') loadLog();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.querySelectorAll('a[data-tab]').forEach(a => {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    switchTab(a.dataset.tab);
   });
 });
 
@@ -322,30 +328,45 @@ function rowHtml(prefix, idx, it) {
   const showPulse = pattern === 'pulsed';
 
   return `<div class="time-row" id="${prefix}row${idx}">
-    <input type="time" value="${t}" id="${prefix}t${idx}">
-    <input type="text" placeholder="Nomi (masalan: 1-dars boshi)" value="${it.label || ''}" id="${prefix}l${idx}">
-    <select id="${prefix}p${idx}" onchange="onPatternChange('${prefix}',${idx})">
-      <option value="continuous" ${pattern === 'continuous' ? 'selected' : ''}>Uzluksiz</option>
-      <option value="pulsed" ${pattern === 'pulsed' ? 'selected' : ''}>Uzib-uzib</option>
-    </select>
-    <span class="row-lbl">sek:</span>
-    <input type="number" min="1" max="60" value="${dur}" id="${prefix}d${idx}">
-    <span class="pulse-fields" id="${prefix}pf${idx}" style="${showPulse ? '' : 'display:none'}">
-      <span class="row-lbl">marta:</span>
-      <input type="number" min="2" max="10" value="${pc}" id="${prefix}pc${idx}">
-      <span class="row-lbl">tin:</span>
-      <input type="number" min="1" max="10" value="${pg}" id="${prefix}pg${idx}">
-    </span>
-    <button class="del-btn" onclick="delRow('${prefix}',${idx})" title="O'chirish">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
+    <div class="time-row-main">
+      <div class="time-row-time-wrap">
+        <span class="row-num-pill">#${idx + 1}</span>
+        <input type="time" value="${t}" id="${prefix}t${idx}" class="time-field" title="Qo'ng'iroq vaqti">
+      </div>
+      <input type="text" placeholder="Dars nomi (masalan: 1-dars boshi)" value="${it.label || ''}" id="${prefix}l${idx}" class="label-field">
+      <button class="del-btn" onclick="delRow('${prefix}',${idx})" title="O'chirish">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="time-row-sub">
+      <select id="${prefix}p${idx}" onchange="onPatternChange('${prefix}',${idx})" class="pattern-field">
+        <option value="continuous" ${pattern === 'continuous' ? 'selected' : ''}>🔔 Uzluksiz</option>
+        <option value="pulsed" ${pattern === 'pulsed' ? 'selected' : ''}>🎶 Uzib-uzib</option>
+      </select>
+      <div class="dur-wrapper">
+        <span class="row-lbl">Vaqt:</span>
+        <input type="number" min="1" max="60" value="${dur}" id="${prefix}d${idx}" class="dur-field">
+        <span class="unit-lbl">sek</span>
+      </div>
+      <div class="pulse-fields" id="${prefix}pf${idx}" style="${showPulse ? '' : 'display:none'}">
+        <div class="pulse-item">
+          <span class="row-lbl">Marta:</span>
+          <input type="number" min="2" max="10" value="${pc}" id="${prefix}pc${idx}">
+        </div>
+        <div class="pulse-item">
+          <span class="row-lbl">Tin:</span>
+          <input type="number" min="1" max="10" value="${pg}" id="${prefix}pg${idx}">
+          <span class="unit-lbl">s</span>
+        </div>
+      </div>
+    </div>
   </div>`;
 }
 
 function onPatternChange(prefix, idx) {
   const pattern = document.getElementById(`${prefix}p${idx}`).value;
   const pf = document.getElementById(`${prefix}pf${idx}`);
-  if (pf) pf.style.display = pattern === 'pulsed' ? '' : 'none';
+  if (pf) pf.style.display = pattern === 'pulsed' ? 'flex' : 'none';
 }
 
 function renderList(prefix, items) {
@@ -712,10 +733,16 @@ function pollDeviceStatus() {
     // Real-time Header & Sidebar status badges for every user
     const headerDot = document.getElementById('headerDeviceDot');
     const headerText = document.getElementById('headerDeviceText');
+    const bottomDot = document.getElementById('bottomDeviceDot');
     if (headerDot) {
       headerDot.classList.remove('online', 'offline');
       if (d.online === true) headerDot.classList.add('online');
       else if (d.online === false) headerDot.classList.add('offline');
+    }
+    if (bottomDot) {
+      bottomDot.classList.remove('online', 'offline');
+      if (d.online === true) bottomDot.classList.add('online');
+      else if (d.online === false) bottomDot.classList.add('offline');
     }
     if (headerText) {
       if (d.online === true) headerText.textContent = 'ESP32: Onlayn';
