@@ -411,16 +411,24 @@ function collectRows(prefix) {
 }
 
 // ============================================================
-// DAY TABS & SCHEDULE LOGIC
-// ============================================================
+const SHORT_DAY_NAMES = {
+  1: 'Dush',
+  2: 'Sesh',
+  3: 'Chor',
+  4: 'Pay',
+  5: 'Jum',
+  6: 'Shan'
+};
+
 function renderDayTabs() {
   const el = document.getElementById('dayTabs');
   if (!el) return;
   el.innerHTML = '';
   DAY_KEYS.forEach(d => {
-    const btn = document.createElement('div');
+    const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'tab' + (d === currentDay ? ' active' : '');
-    btn.textContent = DAY_NAMES[d];
+    btn.innerHTML = `<span class="day-full">${DAY_NAMES[d]}</span><span class="day-short">${SHORT_DAY_NAMES[d]}</span>`;
     btn.onclick = () => { currentDay = d; refreshDayView(); };
     el.appendChild(btn);
   });
