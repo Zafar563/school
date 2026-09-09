@@ -622,6 +622,25 @@ app.post('/api/telegram/test', requireLogin, async (req, res) => {
   }
 });
 
+app.post('/api/telegram/disconnect', requireLogin, async (req, res) => {
+  const { userId } = req.body || {};
+  try {
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    const user = await findUserById(targetUserId);
+    if (!user) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+
+    await updateUserTelegram(targetUserId, '', '');
+    await addAuditLog(req.session.username, 'disconnect_telegram', `User ID: ${targetUserId} (${user.school_name || user.username}) Telegram boti uzildi`);
+    
+    // Botlarni yangilash (to'xtatish)
+    await initTelegramBot();
+
+    res.json({ ok: true, message: 'Telegram bot muvaffaqiyatli uzildi' });
+  } catch (e) {
+    res.status(500).json({ error: 'Telegram botni uzishda xato' });
+  }
+});
+
 // Eski endpointlar mosligi uchun
 app.get('/api/admin/telegram', requireAdmin, async (req, res) => {
   try {

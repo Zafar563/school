@@ -887,10 +887,16 @@ function loadTelegramConfig(targetUserId = null) {
   const badge = document.getElementById('tgBotStatusBadge');
   const tInput = document.getElementById('tgTokenInput');
   const cInput = document.getElementById('tgChatIdInput');
+  const disBtn = document.getElementById('disconnectTelegramBtn');
 
   fetch(url).then(r => r.json()).then(d => {
     if (tInput) tInput.value = d.token || '';
     if (cInput) cInput.value = d.chatId || '';
+
+    const hasBot = !!(d.token && d.token.trim());
+    if (disBtn) {
+      disBtn.style.display = hasBot ? 'inline-flex' : 'none';
+    }
 
     if (badge) {
       if (d.token && d.botInfo && d.botInfo.ok) {
@@ -950,6 +956,29 @@ if (testTgBtn) {
       const d = await r.json();
       if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
       toast('📨 Telegramga sinov xabari muvaffaqiyatli yuborildi! ✓');
+    }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
+  };
+}
+
+const disTgBtn = document.getElementById('disconnectTelegramBtn');
+if (disTgBtn) {
+  disTgBtn.onclick = () => {
+    if (!confirm('Haqiqatan ham ushbu maktab uchun ulangan Telegram botni uzmoqchimisiz?')) return;
+    const userId = isAdmin() ? (document.getElementById('adminTelegramUserSelect')?.value || null) : null;
+    fetch('/api/telegram/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+      toast('Telegram bot muvaffaqiyatli uzildi ✓');
+      const tInput = document.getElementById('tgTokenInput');
+      const cInput = document.getElementById('tgChatIdInput');
+      if (tInput) tInput.value = '';
+      if (cInput) cInput.value = '';
+      loadTelegramConfig(userId);
+      if (isAdmin()) loadUsers();
     }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
   };
 }
