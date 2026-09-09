@@ -19,10 +19,11 @@ const {
   updateUserDeviceStatus, updateUserCustomCoords,
   getUserMuteState, setUserMuteState, getAllDevicesStatus,
   addAuditLog, getAuditLog,
-  getTemplates, createTemplate, deleteTemplate
+  getTemplates, createTemplate, deleteTemplate,
+  updateUserTelegram, getUserTelegram
 } = require('./db');
 const { runMigrations } = require('./migrate');
-const { initTelegramBot } = require('./telegram');
+const { initTelegramBot, setDeviceSocketDispatcher, getBotInfo, sendTestNotification } = require('./telegram');
 const pgSession = require('connect-pg-simple')(session);
 
 // Server birinchi marta ishga tushganda standart adminni avtomatik yaratish
@@ -555,14 +556,80 @@ app.post('/api/admin/trigger-bell', requireLogin, async (req, res) => {
   }
 });
 
-// Telegram Bot sozlamalari
+// ---------- TELEGRAM BOT (MULTI-TENANT PER SCHOOL) ----------
+app.get('/api/telegram', requireLogin, async (req, res) => {
+  try {
+    const targetUserId = (req.session.role === 'admin' && req.query.userId) ? parseInt(req.query.userId, 10) : req.session.userId;
+    const user = await findUserById(targetUserId);
+    if (!user) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+
+    let botInfo = null;
+    if (user.telegram_bot_token) {
+      botInfo = await getBotInfo(user.telegram_bot_token);
+    }
+
+    res.json({
+      userId: user.id,
+      schoolName: user.school_name || user.username,
+      username: user.username,
+      token: user.telegram_bot_token || '',
+      chatId: user.telegram_chat_id || '',
+      botInfo
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Telegram sozlamalarini yuklashda xato' });
+  }
+});
+
+app.post('/api/telegram', requireLogin, async (req, res) => {
+  const { token, chatId, userId } = req.body || {};
+  try {
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    const cleanToken = (token || '').trim();
+    const cleanChatId = (chatId || '').trim();
+
+    let botInfo = null;
+    if (cleanToken) {
+      botInfo = await getBotInfo(cleanToken);
+      if (!botInfo.ok) {
+        return res.status(400).json({ error: `Telegram bot tokeni yaroqsiz: ${botInfo.error}` });
+      }
+    }
+
+    await updateUserTelegram(targetUserId, cleanToken, cleanChatId);
+    await addAuditLog(req.session.username, 'update_telegram', `User ID: ${targetUserId} (${cleanToken ? 'Ulandi' : 'O\'chirildi'})`);
+    
+    // Botlarni yangilash
+    await initTelegramBot();
+
+    res.json({ ok: true, botInfo });
+  } catch (e) {
+    res.status(500).json({ error: 'Telegram bot sozlamalarini saqlashda xato' });
+  }
+});
+
+app.post('/api/telegram/test', requireLogin, async (req, res) => {
+  const { userId } = req.body || {};
+  try {
+    const targetUserId = (req.session.role === 'admin' && userId) ? parseInt(userId, 10) : req.session.userId;
+    const result = await sendTestNotification(targetUserId);
+    if (!result || result.ok === false) {
+      return res.status(400).json({ error: result?.error || 'Sinov xabari yuborilmadi' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Sinov xabarini yuborishda xato' });
+  }
+});
+
+// Eski endpointlar mosligi uchun
 app.get('/api/admin/telegram', requireAdmin, async (req, res) => {
   try {
-    const token = await getSetting('telegram_bot_token');
-    const adminChatId = await getSetting('telegram_admin_chat_id');
+    const targetUserId = req.query.userId ? parseInt(req.query.userId, 10) : req.session.userId;
+    const user = await findUserById(targetUserId);
     res.json({
-      token: token || '',
-      adminChatId: adminChatId || ''
+      token: user?.telegram_bot_token || '',
+      adminChatId: user?.telegram_chat_id || ''
     });
   } catch (e) {
     res.status(500).json({ error: 'Xatolik' });
@@ -570,11 +637,11 @@ app.get('/api/admin/telegram', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/telegram', requireAdmin, async (req, res) => {
-  const { token, adminChatId } = req.body || {};
+  const { token, adminChatId, userId } = req.body || {};
   try {
-    await setSetting('telegram_bot_token', (token || '').trim());
-    if (adminChatId) await setSetting('telegram_admin_chat_id', (adminChatId || '').trim());
-    await addAuditLog(req.session.username, 'update_telegram_config', 'Telegram bot sozlamalari yangilandi');
+    const targetUserId = userId ? parseInt(userId, 10) : req.session.userId;
+    await updateUserTelegram(targetUserId, (token || '').trim(), (adminChatId || '').trim());
+    await addAuditLog(req.session.username, 'update_telegram_config', `User ID: ${targetUserId}`);
     initTelegramBot();
     res.json({ ok: true });
   } catch (e) {
@@ -892,6 +959,8 @@ async function startServer() {
   } catch (err) {
     console.error('⚠️ Baza ulanishida yoki migratsiyada xato:', err.message);
   }
+
+  setDeviceSocketDispatcher(sendToDeviceSocket);
 
   server.listen(PORT, () => {
     console.log(`Server ishga tushdi (HTTP + WebSocket): http://localhost:${PORT}`);

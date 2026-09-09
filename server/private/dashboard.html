@@ -383,21 +383,30 @@
         </div>
       </div>
 
-      <div class="card admin-only">
+      <div class="card" id="telegramCard">
         <h2>Telegram Bot sozlamalari</h2>
-        <p class="hint">Telegram orqali qo'ng'iroqni boshqarish va qurilma o'chib qolsa ogohlantirish olish uchun @BotFather'dan olingan tokenni kiriting.</p>
+        <p class="hint">Telegram orqali qo'ng'iroqni boshqarish va apparat o'chib qolsa darhol xabar olish uchun @BotFather'dan olingan bot tokenini kiriting.</p>
+        
         <div class="form-fields">
+          <div class="field-group admin-only" id="tgAdminSchoolSelectGroup" style="margin-bottom:10px;">
+            <label style="font-weight:600; color:var(--primary);">🏫 Sozlanayotgan maktab:</label>
+            <select id="adminTelegramUserSelect" style="padding:7px 12px; font-weight:600; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main);"></select>
+          </div>
+
+          <div id="tgBotStatusBadge" style="display:none; padding:8px 12px; border-radius:6px; margin-bottom:12px; font-size:13px; font-weight:600;"></div>
+
           <div class="field-group">
-            <label>Bot Token</label>
-            <input type="text" id="tgTokenInput" placeholder="Masalan: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+            <label>Bot Token (@BotFather'dan olingan API token)</label>
+            <input type="text" id="tgTokenInput" placeholder="Masalan: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" autocomplete="off">
           </div>
           <div class="field-group">
-            <label>Admin Chat ID (ixtiyoriy, botga /start yozilsa avtomatik to'ladi)</label>
-            <input type="text" id="tgChatIdInput" placeholder="Masalan: 12345678">
+            <label>Admin Chat ID (Botingizga /start yozsangiz avtomatik ulanadi yoki qo'lda kiriting)</label>
+            <input type="text" id="tgChatIdInput" placeholder="Masalan: 12345678" autocomplete="off">
           </div>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="saveTelegramBtn">Botni saqlash va ishga tushirish</button>
+        <div class="btn-row" style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="saveTelegramBtn">💾 Saqlash va faollashtirish</button>
+          <button class="btn btn-ghost" id="testTelegramBtn" style="border:1px solid var(--border);">📨 Sinov xabari yuborish</button>
         </div>
       </div>
 
@@ -465,7 +474,7 @@
         <h2>Mavjud maktablar & foydalanuvchilar</h2>
         <div class="table-responsive">
           <table class="log-table" id="usersTable">
-            <thead><tr><th>ID</th><th>Maktab nomi</th><th>Login</th><th>Rol</th><th>ESP32 API Kalit</th><th>Yaratilgan sana</th><th style="width:160px; text-align:right;">Amal</th></tr></thead>
+            <thead><tr><th>ID</th><th>Maktab nomi</th><th>Login</th><th>Rol</th><th>Telegram Bot</th><th>ESP32 API Kalit</th><th>Yaratilgan sana</th><th style="width:160px; text-align:right;">Amal</th></tr></thead>
             <tbody id="usersList"></tbody>
           </table>
         </div>

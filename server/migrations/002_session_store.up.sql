@@ -1,6 +1,4 @@
--- 002_session_store.sql
--- PostgreSQL session store jadvali (connect-pg-simple)
-
+﻿-- 002_session_store.up.sql
 CREATE TABLE IF NOT EXISTS "session" (
   "sid" varchar NOT NULL COLLATE "default",
   "sess" json NOT NULL,

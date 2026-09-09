@@ -18,7 +18,7 @@
 #include <WebSocketsClient.h>
 #include <ThreeWire.h>
 #include <RtcDS1302.h>
-#include <Preferences.h>ё
+#include <Preferences.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <vector>
@@ -28,7 +28,7 @@ const char* WIFI_SSID     = "MAKTAB_WIFI_NOMI";
 const char* WIFI_PASSWORD = "MAKTAB_WIFI_PAROLI";
 
 // Serveringiz manzili (IP yoki Domen)
-const char* SERVER_HOST   = "157.230.53.183";   // http:// yoki https:// YOZMANG!
+const char* SERVER_HOST   = "52.188.21.165";   // http:// yoki https:// YOZMANG!
 const int   SERVER_PORT   = 3000;               // Port (masalan 3000 yoki HTTPS uchun 443)
 const bool  USE_HTTPS     = false;              // Agar VPS da HTTPS bo'lsa true qiling
 

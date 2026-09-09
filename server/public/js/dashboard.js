@@ -246,6 +246,17 @@ async function loadSchoolDropdowns() {
         dSelect.value = allUsersList[0].id;
       }
     }
+
+    const tgSelect = document.getElementById('adminTelegramUserSelect');
+    if (tgSelect) {
+      const prev = tgSelect.value;
+      tgSelect.innerHTML = options;
+      if (prev && allUsersList.some(u => String(u.id) === String(prev))) {
+        tgSelect.value = prev;
+      } else if (allUsersList[0]) {
+        tgSelect.value = allUsersList[0].id;
+      }
+    }
   } catch (e) {}
 }
 
@@ -255,8 +266,10 @@ if (adminScheduleSelect) {
     const val = adminScheduleSelect.value;
     const hSelect = document.getElementById('adminHolidayUserSelect');
     const dSelect = document.getElementById('adminDeviceUserSelect');
+    const tgSelect = document.getElementById('adminTelegramUserSelect');
     if (hSelect) hSelect.value = val;
     if (dSelect) dSelect.value = val;
+    if (tgSelect) tgSelect.value = val;
     loadSchedule();
     loadMuteState();
     loadCustomTemplates();
@@ -270,8 +283,10 @@ if (adminHolidaySelect) {
     const val = adminHolidaySelect.value;
     const sSelect = document.getElementById('adminScheduleUserSelect');
     const dSelect = document.getElementById('adminDeviceUserSelect');
+    const tgSelect = document.getElementById('adminTelegramUserSelect');
     if (sSelect) sSelect.value = val;
     if (dSelect) dSelect.value = val;
+    if (tgSelect) tgSelect.value = val;
     loadHolidays();
   };
 }
@@ -282,9 +297,25 @@ if (adminDeviceSelect) {
     const val = adminDeviceSelect.value;
     const sSelect = document.getElementById('adminScheduleUserSelect');
     const hSelect = document.getElementById('adminHolidayUserSelect');
+    const tgSelect = document.getElementById('adminTelegramUserSelect');
     if (sSelect) sSelect.value = val;
     if (hSelect) hSelect.value = val;
+    if (tgSelect) tgSelect.value = val;
     pollDeviceStatus();
+  };
+}
+
+const adminTgSelect = document.getElementById('adminTelegramUserSelect');
+if (adminTgSelect) {
+  adminTgSelect.onchange = () => {
+    const val = adminTgSelect.value;
+    const sSelect = document.getElementById('adminScheduleUserSelect');
+    const hSelect = document.getElementById('adminHolidayUserSelect');
+    const dSelect = document.getElementById('adminDeviceUserSelect');
+    if (sSelect) sSelect.value = val;
+    if (hSelect) hSelect.value = val;
+    if (dSelect) dSelect.value = val;
+    loadTelegramConfig(val);
   };
 }
 
@@ -801,13 +832,16 @@ window.selectSchoolForAdmin = function(userId) {
   const sSelect = document.getElementById('adminScheduleUserSelect');
   const hSelect = document.getElementById('adminHolidayUserSelect');
   const dSelect = document.getElementById('adminDeviceUserSelect');
+  const tgSelect = document.getElementById('adminTelegramUserSelect');
   if (sSelect) sSelect.value = userId;
   if (hSelect) hSelect.value = userId;
   if (dSelect) dSelect.value = userId;
+  if (tgSelect) tgSelect.value = userId;
   loadSchedule();
   loadMuteState();
   loadCustomTemplates();
   pollDeviceStatus();
+  loadTelegramConfig(userId);
   toast('Maktab tanlandi ✓');
 };
 
@@ -843,21 +877,42 @@ function startDevicePolling() {
   setInterval(pollDeviceStatus, 8000);
 }
 
-function startDevicePolling() {
-  pollDeviceStatus();
-  setInterval(pollDeviceStatus, 8000);
-}
+// ============================================================
+// ACCOUNT & TELEGRAM (MULTI-TENANT PER SCHOOL)
+// ============================================================
+function loadTelegramConfig(targetUserId = null) {
+  const selectedId = targetUserId || (isAdmin() ? (document.getElementById('adminTelegramUserSelect')?.value || null) : null);
+  const url = selectedId ? `/api/telegram?userId=${selectedId}` : '/api/telegram';
+  
+  const badge = document.getElementById('tgBotStatusBadge');
+  const tInput = document.getElementById('tgTokenInput');
+  const cInput = document.getElementById('tgChatIdInput');
 
-// ============================================================
-// ACCOUNT & TELEGRAM
-// ============================================================
-function loadTelegramConfig() {
-  if (!isAdmin()) return;
-  fetch('/api/admin/telegram').then(r => r.json()).then(d => {
-    const tInput = document.getElementById('tgTokenInput');
-    const cInput = document.getElementById('tgChatIdInput');
+  fetch(url).then(r => r.json()).then(d => {
     if (tInput) tInput.value = d.token || '';
-    if (cInput) cInput.value = d.adminChatId || '';
+    if (cInput) cInput.value = d.chatId || '';
+
+    if (badge) {
+      if (d.token && d.botInfo && d.botInfo.ok) {
+        badge.style.display = 'block';
+        badge.style.background = 'rgba(16,185,129,0.12)';
+        badge.style.border = '1px solid rgba(16,185,129,0.3)';
+        badge.style.color = '#059669';
+        badge.innerHTML = `🤖 Ulangan bot: <b>${d.botInfo.first_name || d.botInfo.username}</b> (<code>@${d.botInfo.username}</code>)`;
+      } else if (d.token) {
+        badge.style.display = 'block';
+        badge.style.background = 'rgba(239,68,68,0.12)';
+        badge.style.border = '1px solid rgba(239,68,68,0.3)';
+        badge.style.color = '#DC2626';
+        badge.innerHTML = `⚠️ Bot tokeni kiritilgan, lekin Telegram bilan ulanib bo'lmadi`;
+      } else {
+        badge.style.display = 'block';
+        badge.style.background = 'rgba(107,114,128,0.1)';
+        badge.style.border = '1px solid rgba(107,114,128,0.2)';
+        badge.style.color = 'var(--text-muted)';
+        badge.innerHTML = `⚪ Hozircha ushbu maktabga Telegram bot ulanmagan`;
+      }
+    }
   }).catch(() => {});
 }
 
@@ -865,15 +920,36 @@ const saveTgBtn = document.getElementById('saveTelegramBtn');
 if (saveTgBtn) {
   saveTgBtn.onclick = () => {
     const token = (document.getElementById('tgTokenInput') || {}).value.trim();
-    const adminChatId = (document.getElementById('tgChatIdInput') || {}).value.trim();
-    fetch('/api/admin/telegram', {
+    const chatId = (document.getElementById('tgChatIdInput') || {}).value.trim();
+    const userId = isAdmin() ? (document.getElementById('adminTelegramUserSelect')?.value || null) : null;
+
+    fetch('/api/telegram', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, adminChatId })
+      body: JSON.stringify({ token, chatId, userId })
     }).then(async r => {
       const d = await r.json();
       if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
       toast('Telegram bot saqlandi va faollashtirildi ✓');
+      loadTelegramConfig(userId);
+      if (isAdmin()) loadUsers();
+    }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
+  };
+}
+
+const testTgBtn = document.getElementById('testTelegramBtn');
+if (testTgBtn) {
+  testTgBtn.onclick = () => {
+    const userId = isAdmin() ? (document.getElementById('adminTelegramUserSelect')?.value || null) : null;
+    toast('Sinov xabari yuborilmoqda...');
+    fetch('/api/telegram/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) { toast(d.error || 'Xatolik', 'error'); return; }
+      toast('📨 Telegramga sinov xabari muvaffaqiyatli yuborildi! ✓');
     }).catch(() => toast('Server bilan bog\'lanishda xato', 'error'));
   };
 }
@@ -1050,13 +1126,20 @@ function loadUsers() {
   fetch('/api/admin/users').then(r => r.json()).then(rows => {
     const tbody = document.getElementById('usersList');
     if (!tbody) return;
-    tbody.innerHTML = rows.map(u => `<tr>
+    tbody.innerHTML = rows.map(u => {
+      const hasTg = !!(u.telegram_bot_token && u.telegram_bot_token.trim());
+      return `<tr>
       <td class="mono">${u.id}</td>
       <td><b>${u.school_name || u.username}</b></td>
       <td><span class="mono">@${u.username}</span></td>
       <td>
         <span class="conn-badge" style="padding:2px 8px; font-size:11px; background:${u.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)'}; color:${u.role === 'admin' ? '#2563eb' : '#4b5563'}">
           ${u.role === 'admin' ? '👑 Admin' : '👤 User'}
+        </span>
+      </td>
+      <td>
+        <span class="conn-badge" style="padding:2px 8px; font-size:11px; background:${hasTg ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.08)'}; color:${hasTg ? '#059669' : 'var(--text-muted)'}; border:1px solid ${hasTg ? 'rgba(16,185,129,0.25)' : 'rgba(107,114,128,0.15)'}">
+          ${hasTg ? '🤖 Ulangan' : '—'}
         </span>
       </td>
       <td>
@@ -1079,7 +1162,8 @@ function loadUsers() {
           O'chirish
         </button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
+    </tr>`;
+    }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">Foydalanuvchilar yo\'q</td></tr>';
   }).catch(() => toast('Foydalanuvchilarni yuklashda xato', 'error'));
 }
 

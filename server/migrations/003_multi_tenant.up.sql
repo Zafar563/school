@@ -1,6 +1,4 @@
--- 003_multi_tenant.sql
--- Ko'p foydalanuvchili (Multi-tenant) arxitektura: Har bir maktab/user uchun alohida jadval va qurilma
-
+﻿-- 003_multi_tenant.up.sql
 -- 1. Users jadvaliga maktab va qurilma holati maydonlarini qo'shish
 ALTER TABLE users ADD COLUMN IF NOT EXISTS school_name VARCHAR(255) DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bell_muted BOOLEAN DEFAULT false;
@@ -19,12 +17,12 @@ ALTER TABLE holidays ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) O
 UPDATE holidays SET user_id = (SELECT id FROM users ORDER BY id ASC LIMIT 1) WHERE user_id IS NULL;
 
 -- Eski global unique constraint (faqat date) o'rniga har bir user uchun alohida (user_id, date) unikal qilish
-DO $$
+DO $body$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'holidays_date_key') THEN
     ALTER TABLE holidays DROP CONSTRAINT holidays_date_key;
   END IF;
-END $$;
+END $body$;
 
 ALTER TABLE holidays DROP CONSTRAINT IF EXISTS holidays_user_date_unique;
 ALTER TABLE holidays ADD CONSTRAINT holidays_user_date_unique UNIQUE (user_id, date);

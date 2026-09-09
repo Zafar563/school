@@ -5,7 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "migrate": "node migrate.js",
+    "migrate": "node migrate.js up",
+    "migrate:up": "node migrate.js up",
+    "migrate:down": "node migrate.js down",
+    "migrate:status": "node migrate.js status",
+    "migrate:reset": "node migrate.js reset",
     "create-admin": "node create-admin.js",
     "reset-db": "node reset-db.js"
   },

@@ -80,9 +80,37 @@ async function regenerateUserApiKey(userId) {
   return res.rows[0] ? res.rows[0].api_key : null;
 }
 
+async function updateUserTelegram(userId, botToken, chatId) {
+  const uid = parseInt(userId, 10);
+  const cleanToken = (botToken || '').trim();
+  const cleanChatId = (chatId || '').trim();
+  const res = await pool.query(
+    'UPDATE users SET telegram_bot_token = $1, telegram_chat_id = $2 WHERE id = $3 RETURNING id, username, school_name, telegram_bot_token, telegram_chat_id',
+    [cleanToken, cleanChatId, uid]
+  );
+  return res.rows[0] || null;
+}
+
+async function getUserTelegram(userId) {
+  const uid = parseInt(userId, 10);
+  const { rows } = await pool.query(
+    'SELECT id, username, school_name, telegram_bot_token, telegram_chat_id FROM users WHERE id = $1',
+    [uid]
+  );
+  return rows[0] || null;
+}
+
+async function getUsersWithTelegram() {
+  const { rows } = await pool.query(
+    `SELECT id, username, school_name, telegram_bot_token, telegram_chat_id, last_seen, last_ip, bell_muted
+     FROM users WHERE telegram_bot_token IS NOT NULL AND telegram_bot_token != ''`
+  );
+  return rows;
+}
+
 async function getAllUsers() {
   const { rows } = await pool.query(
-    `SELECT id, username, role, school_name, api_key, last_seen, last_ip, geo, custom_coords, bell_muted, created_at 
+    `SELECT id, username, role, school_name, api_key, telegram_bot_token, telegram_chat_id, last_seen, last_ip, geo, custom_coords, bell_muted, created_at 
      FROM users ORDER BY id ASC`
   );
   return rows;
@@ -343,5 +371,6 @@ module.exports = {
   updateUserDeviceStatus, updateUserCustomCoords,
   getUserMuteState, setUserMuteState, getAllDevicesStatus,
   addAuditLog, getAuditLog,
-  getTemplates, createTemplate, deleteTemplate
+  getTemplates, createTemplate, deleteTemplate,
+  updateUserTelegram, getUserTelegram, getUsersWithTelegram
 };

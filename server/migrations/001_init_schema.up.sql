@@ -1,6 +1,4 @@
--- 001_init_schema.sql
--- Maktab Qo'ng'irog'i Tizimi — Dastlabki PostgreSQL sxemasi
-
+﻿-- 001_init_schema.up.sql
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,

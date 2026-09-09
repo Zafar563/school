@@ -1,6 +1,4 @@
--- 004_schedule_templates.sql
--- Custom user/admin reusable schedule presets/templates
-
+﻿-- 004_schedule_templates.up.sql
 CREATE TABLE IF NOT EXISTS schedule_templates (
   id SERIAL PRIMARY KEY,
   user_id INT REFERENCES users(id) ON DELETE CASCADE,
