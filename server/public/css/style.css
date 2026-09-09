@@ -906,8 +906,94 @@ body {
 }
 
 /* ============================================================
-   LOG TABLE
+   TEMPLATE BOX & KEY BOX
    ============================================================ */
+.template-box {
+  margin: 12px 0 16px 0;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.template-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.template-header-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.template-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-clear-day {
+  color: var(--danger, #DC2626) !important;
+}
+#templatesListBar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.key-box-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+}
+.key-box {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-main);
+  color: var(--text-main);
+  box-sizing: border-box;
+}
+.btn-copy-key {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 10px 16px;
+}
+
+/* ============================================================
+   LOG TABLE & TABLE RESPONSIVE WRAPPER
+   ============================================================ */
+.table-responsive {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 8px;
+  display: block;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.table-responsive::-webkit-scrollbar {
+  height: 5px;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
 .log-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .log-table th {
   text-align: left;
@@ -918,6 +1004,7 @@ body {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  background: var(--bg-card);
 }
 .log-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); }
 .log-table tr:last-child td { border-bottom: none; }
@@ -1425,18 +1512,48 @@ body {
     font-size: 12px !important;
   }
 
-  /* Quick templates grid */
-  #templatesListBar {
+  /* Template Header Actions (50% / 50% Grid) */
+  .template-box {
+    padding: 10px !important;
+    margin: 10px 0 14px 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .template-header-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .template-header-title {
+    font-size: 11.5px !important;
+  }
+  .template-header-actions {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 6px !important;
     width: 100% !important;
   }
-  #templatesListBar .btn {
+  .template-header-actions .btn {
     width: 100% !important;
     justify-content: center !important;
     font-size: 11.5px !important;
     padding: 7px 4px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Quick templates grid */
+  #templatesListBar {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+    width: 100% !important;
+  }
+  #templatesListBar .btn {
+    width: 100% !important;
+    justify-content: center !important;
+    font-size: 11px !important;
+    padding: 6px 2px !important;
     white-space: nowrap !important;
     box-sizing: border-box !important;
   }
@@ -1481,18 +1598,50 @@ body {
     width: 100% !important;
     box-sizing: border-box !important;
   }
+
+  /* Key Box & Copy API Key Button on Mobile */
   .key-box-row {
+    display: flex !important;
     flex-direction: column !important;
+    align-items: stretch !important;
     gap: 8px !important;
-    width: 100% !important;
-  }
-  .key-box-row .key-box {
     width: 100% !important;
     box-sizing: border-box !important;
   }
-  .key-box-row .btn {
+  .key-box {
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 13px !important;
+    padding: 10px 8px !important;
+    box-sizing: border-box !important;
+  }
+  .btn-copy-key {
     width: 100% !important;
     justify-content: center !important;
+    min-height: 42px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+  }
+
+  /* Responsive Table Containment on Mobile */
+  .table-responsive {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--bg-card) !important;
+  }
+  .log-table {
+    min-width: 500px !important;
+    font-size: 12px !important;
+  }
+  .log-table th, .log-table td {
+    padding: 8px 10px !important;
+    white-space: nowrap !important;
   }
 
   .conn-scene {

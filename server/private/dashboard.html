@@ -148,24 +148,24 @@
           </div>
         </div>
         <div class="tabs" id="dayTabs"></div>
-        <div style="margin:12px 0 16px 0; padding:12px 14px; background:rgba(0,0,0,0.03); border:1px solid var(--border, #e4e4e7); border-radius:8px;">
-          <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:8px;">
-            <span style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">⚡ Tezkor Shablonlar</span>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <button class="btn btn-ghost btn-sm" id="saveAsTemplateBtn" style="color:var(--primary); font-weight:600;" title="Hozirgi kun jadvalini yangi shablon sifatida saqlab qo'yish">
-                💾 Ushbu kunni shablon qilish
+        <div class="template-box">
+          <div class="template-header-bar">
+            <span class="template-header-title">⚡ Tezkor Shablonlar</span>
+            <div class="template-header-actions">
+              <button class="btn btn-ghost btn-sm" id="saveAsTemplateBtn" title="Hozirgi kun jadvalini yangi shablon qilish">
+                💾 Shablon qilish
               </button>
-              <button class="btn btn-ghost btn-sm" id="tplClearDayBtn" style="color:var(--danger, #DC2626);">
+              <button class="btn btn-ghost btn-sm btn-clear-day" id="tplClearDayBtn">
                 🗑️ Tozalash
               </button>
             </div>
           </div>
 
-          <div id="templatesListBar" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <div id="templatesListBar">
             <button class="btn btn-ghost btn-sm" id="tpl1SmenaBtn">🌅 1-Smena</button>
             <button class="btn btn-ghost btn-sm" id="tpl2SmenaBtn">🌇 2-Smena</button>
-            <button class="btn btn-ghost btn-sm" id="tplShortDayBtn">⏱️ Qisqartirilgan (35 min)</button>
-            <span id="customTemplatesContainer" style="display:inline-flex; gap:6px; flex-wrap:wrap;"></span>
+            <button class="btn btn-ghost btn-sm" id="tplShortDayBtn">⏱️ Qisqa (35m)</button>
+            <span id="customTemplatesContainer"></span>
           </div>
         </div>
         <div id="dayList"></div>
@@ -201,11 +201,11 @@
         <p class="hint">Belgilangan kunlarda qo'ng'iroq avtomatik ravishda chalinmaydi.</p>
 
         <div class="form-fields" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom: 20px;">
-          <div class="field-group" style="flex:1; min-width:180px;">
+          <div class="field-group" style="flex:1; min-width:140px;">
             <label>Sana</label>
             <input type="date" id="holidayDateInput">
           </div>
-          <div class="field-group" style="flex:2; min-width:220px;">
+          <div class="field-group" style="flex:2; min-width:180px;">
             <label>Bayram / Ta'til nomi</label>
             <input type="text" id="holidayNameInput" placeholder="Masalan: Navro'z bayrami">
           </div>
@@ -252,9 +252,9 @@
       <div class="card" id="deviceKeyCard">
         <h2>ESP32 uchun API Kalitingiz</h2>
         <p class="hint">Ushbu kalitni mikrokontroller dasturidagi (Arduino kodi) <code>DEVICE_API_KEY</code> qatoriga qo'ying.</p>
-        <div class="key-box-row" style="margin-top:10px;">
+        <div class="key-box-row">
           <input type="text" class="key-box" id="deviceApiKeyVal" readonly value="Yuklanmoqda...">
-          <button class="btn btn-ghost" id="copyApiKeyBtn" style="white-space:nowrap;">📋 Nusxa olish</button>
+          <button class="btn btn-primary btn-copy-key" id="copyApiKeyBtn">📋 Nusxa olish</button>
         </div>
       </div>
 
