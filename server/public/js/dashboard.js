@@ -1214,3 +1214,44 @@ if (createUserBtn) {
     }).catch(() => toast('Server bilan aloqada xato', 'error'));
   };
 }
+
+// ============================================================
+// FAVQULODDA & TEZKOR QO'NG'IROQ CHALISH
+// ============================================================
+async function triggerBellCommand(action, duration_sec, ring_pattern, pulse_count, pulse_gap_sec) {
+  const targetId = getActiveScheduleUserId();
+  try {
+    const res = await fetch('/api/admin/trigger-bell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        duration_sec,
+        ring_pattern,
+        pulse_count,
+        pulse_gap_sec,
+        userId: targetId
+      })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      toast(d.message || 'Signal yuborildi ✓');
+    } else {
+      toast(d.error || 'Xatolik yuz berdi', 'error');
+    }
+  } catch (e) {
+    toast('Server bilan aloqa xatosi', 'error');
+  }
+}
+
+const ring5Btn = document.getElementById('manualRing5Btn');
+if (ring5Btn) ring5Btn.onclick = () => triggerBellCommand('ring', 5, 'continuous');
+
+const ringPulseBtn = document.getElementById('manualRingPulseBtn');
+if (ringPulseBtn) ringPulseBtn.onclick = () => triggerBellCommand('ring', 6, 'pulsed', 3, 1);
+
+const emergencyBtn = document.getElementById('emergencyRingBtn');
+if (emergencyBtn) emergencyBtn.onclick = () => triggerBellCommand('ring', 30, 'continuous');
+
+const stopBtn = document.getElementById('stopRingBtn');
+if (stopBtn) stopBtn.onclick = () => triggerBellCommand('stop');

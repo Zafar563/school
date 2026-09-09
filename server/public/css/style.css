@@ -1034,6 +1034,45 @@ body {
 .toast.show { opacity: 1; transform: translateY(0); }
 
 /* ============================================================
+   EMERGENCY & MANUAL RING CARD (SCHEDULE TAB ONLY)
+   ============================================================ */
+.emergency-card {
+  margin-top: 16px;
+  border: 1.5px solid rgba(220, 38, 38, 0.2);
+  background: var(--bg-card);
+  border-radius: var(--radius);
+}
+.emergency-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.emergency-grid .btn {
+  width: 100%;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13.5px;
+  padding: 10px 8px;
+  white-space: nowrap;
+}
+.btn-emergency-trevoga {
+  background: #DC2626 !important;
+  color: #fff !important;
+  border: 1px solid #B91C1C !important;
+  font-weight: 700 !important;
+}
+.btn-emergency-trevoga:hover {
+  background: #B91C1C !important;
+}
+.btn-ring-stop {
+  color: #DC2626 !important;
+  border-color: rgba(220, 38, 38, 0.3) !important;
+}
+.btn-ring-stop:hover {
+  background: rgba(220, 38, 38, 0.1) !important;
+}
+
 /* ============================================================
    MOBILE BOTTOM APP BAR (NATIVE APP NAVIGATION)
    ============================================================ */
@@ -1656,6 +1695,23 @@ body {
   .user-form-grid {
     grid-template-columns: 1fr !important;
     width: 100% !important;
+  }
+
+  /* Emergency Ring Buttons 2x2 Grid on Mobile */
+  .emergency-card {
+    padding: 12px 10px !important;
+    margin-top: 14px !important;
+  }
+  .emergency-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .emergency-grid .btn {
+    min-height: 44px !important;
+    font-size: 12px !important;
+    padding: 8px 4px !important;
+    box-sizing: border-box !important;
   }
 }
 
